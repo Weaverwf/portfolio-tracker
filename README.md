@@ -1,6 +1,6 @@
 # Portfolio
 
-A personal holdings table for one person. It runs in the browser, stores its rows on the device, and can open offline after the first visit. This version fills the table with **example data**: made-up holdings and sample prices, including AAPL in an IRA and a Roth IRA.
+A personal holdings table for one person. It runs in the browser, stores its rows on the device, and can open offline after the first visit. The first visit fills the table with **example data**: made-up holdings and sample prices, including AAPL in an IRA and a Roth IRA. Those rows stay until you add a holding or clear them.
 
 This is a personal record, not financial advice. It does not place orders.
 
@@ -44,6 +44,10 @@ On the first visit, example holdings are written to `localStorage` under the key
 
 If the saved text cannot be read, the page says so and does not write over it.
 
+**Clear example data** removes the made-up rows and leaves the table empty. The first holding you save also replaces those rows. After that the example banner is gone. The same ticker can be in more than one portfolio. The same ticker in the same portfolio is refused, and the page says so in plain words.
+
+Last price and previous close can be left blank. Today, Life, and Total Value show a dash for that row until a last price is entered. Today also needs the previous close. The totals at the top stay a dash until every row has the price that total needs.
+
 To see the example rows again, remove this site's saved data in the browser settings.
 
 The saved shape is:
@@ -65,7 +69,7 @@ The saved shape is:
 }
 ```
 
-`lastPrice` and `previousClose` are per share. `costBasis` is the total for the row.
+`lastPrice` and `previousClose` are per share. Either one may be `null` when it was left blank. `costBasis` is the total for the row.
 
 ## Offline, and a home screen icon
 
@@ -103,8 +107,8 @@ Use GitHub Pages if the files already live in a GitHub repository.
 ## This version
 
 - The table is the screen. On a narrow phone, swipe sideways; the ticker column stays put.
+- **Add** (the plus) stores a holding on this device: ticker, portfolio, shares, cost basis, and optional prices.
 - **Update** is visible. Live prices are not in this version. Figures use the prices saved with each row.
-- **Add** (the plus) is visible. Adding a ticker is not in this version.
 - Tap a row and an **Edit** choice appears. Changing a row is not in this version.
 
 ## Files
@@ -117,4 +121,4 @@ Use GitHub Pages if the files already live in a GitHub repository.
 | `storage.js` | On-device storage |
 | `sw.js`, `manifest.webmanifest`, `icons/` | Install and offline |
 | `server.js` | Local preview only |
-| `test/` | Checks for the figures |
+| `test/` | Checks for the figures and for adding a row |

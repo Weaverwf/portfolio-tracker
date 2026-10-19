@@ -1,6 +1,6 @@
-// Bump CACHE when a file is removed and offline copies must be dropped.
+// Bump CACHE when shipped files change so an installed copy drops the old files.
 // Requests for this app's own files are cached. Nothing else is fetched.
-const CACHE = "portfolio-v1";
+const CACHE = "portfolio-v2";
 
 const SHELL = [
   "./",

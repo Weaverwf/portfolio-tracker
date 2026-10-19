@@ -48,12 +48,15 @@
 
     <main id="holdings-region">
       <div id="example-banner" class="banner" hidden>
-        <strong>Example data.</strong>
-        These rows are made up so you can see the table. AAPL is listed in an IRA and a Roth IRA.
-        The prices are samples. This is not your account.
+        <p>
+          <strong>Example data.</strong>
+          These rows are made up so you can see the table. AAPL is listed in an IRA and a Roth IRA.
+          The prices are samples. This is not your account. Saving a holding replaces these rows.
+        </p>
+        <button type="button" class="button button-primary" id="clear-example">Clear example data</button>
       </div>
       <div id="storage-banner" class="banner info" hidden>
-        This browser blocked on-device storage, so these example holdings are shown for this visit only.
+        This browser blocked on-device storage. What you see is kept for this visit only.
       </div>
       <div id="error-banner" class="banner error" role="alert" hidden>
         Holdings saved on this device could not be read. They were left untouched.
@@ -68,6 +71,7 @@
 
       <p id="legend" class="legend" hidden>
         Today is the last price compared with the previous close. Life is the total value compared with the cost basis.
+        A dash means no price was entered.
       </p>
 
       <section id="table-card" class="table-card" hidden aria-labelledby="table-heading">
@@ -126,6 +130,73 @@
         off this device. This is a personal record, not financial advice.
       </p>
     </main>
+
+    <dialog id="add-dialog" aria-labelledby="add-title">
+      <form id="add-form" method="dialog" novalidate>
+        <h2 id="add-title">Add a holding</h2>
+        <p id="add-replaces" class="form-note" hidden>Saving replaces the example rows.</p>
+        <p id="add-intro">
+          The ticker is 1 to 5 letters. A period or a hyphen is allowed. Leave a price blank and the table shows a dash.
+        </p>
+        <div class="field">
+          <label for="add-ticker"><span class="label">Ticker</span></label>
+          <input
+            id="add-ticker"
+            name="ticker"
+            type="text"
+            maxlength="5"
+            autocomplete="off"
+            autocapitalize="characters"
+            autocorrect="off"
+            spellcheck="false"
+            enterkeyhint="next"
+          />
+        </div>
+        <div class="field">
+          <label for="add-portfolio"><span class="label">Portfolio</span></label>
+          <input
+            id="add-portfolio"
+            name="portfolio"
+            type="text"
+            maxlength="40"
+            list="portfolio-names"
+            autocapitalize="off"
+            spellcheck="false"
+            enterkeyhint="next"
+          />
+          <datalist id="portfolio-names"></datalist>
+          <div id="portfolio-suggestions" class="suggestions" role="group" aria-label="Existing portfolios" hidden></div>
+        </div>
+        <div class="field">
+          <label for="add-shares"><span class="label">Shares</span></label>
+          <input id="add-shares" name="shares" type="text" inputmode="decimal" autocomplete="off" enterkeyhint="next" />
+        </div>
+        <div class="field">
+          <label for="add-cost"><span class="label">Cost basis <span class="sub">total $</span></span></label>
+          <input id="add-cost" name="costBasis" type="text" inputmode="decimal" autocomplete="off" enterkeyhint="next" />
+        </div>
+        <div class="field">
+          <label for="add-last"><span class="label">Last price <span class="sub">optional</span></span></label>
+          <input id="add-last" name="lastPrice" type="text" inputmode="decimal" autocomplete="off" enterkeyhint="next" />
+        </div>
+        <div class="field">
+          <label for="add-prev"><span class="label">Previous close <span class="sub">optional</span></span></label>
+          <input
+            id="add-prev"
+            name="previousClose"
+            type="text"
+            inputmode="decimal"
+            autocomplete="off"
+            enterkeyhint="done"
+          />
+        </div>
+        <p id="add-error" class="form-error" role="alert" hidden></p>
+        <div class="form-actions">
+          <button type="submit" class="button button-primary" id="add-save">Save</button>
+          <button type="button" class="button button-ghost" id="add-cancel">Cancel</button>
+        </div>
+      </form>
+    </dialog>
 
     <dialog id="notice" aria-labelledby="notice-title" aria-describedby="notice-body">
       <h2 id="notice-title"></h2>

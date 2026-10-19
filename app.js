@@ -1,12 +1,16 @@
-import { isCompleteHolding, presentPortfolio } from "./calc.js";
-import { loadState } from "./storage.js";
+import { EMPTY_MARK, isCompleteHolding, presentPortfolio } from "./calc.js";
+import { addHolding, clearExampleData, loadState, portfolioNames, saveState } from "./storage.js";
 
 const notice = document.querySelector("#notice");
 const noticeTitle = document.querySelector("#notice-title");
 const noticeBody = document.querySelector("#notice-body");
 const tbody = document.querySelector("#holdings");
+const addDialog = document.querySelector("#add-dialog");
+const addForm = document.querySelector("#add-form");
 
+let state = { ok: false, isExample: false, holdings: [], persisted: true };
 let lastFocus = null;
+let addReturnFocus = null;
 
 function show(id, on) {
   document.getElementById(id).hidden = !on;
@@ -43,12 +47,155 @@ function closeNotice() {
 notice.addEventListener("close", restoreFocus);
 document.querySelector("#notice-close").addEventListener("click", closeNotice);
 
+function hideFormError() {
+  const error = document.getElementById("add-error");
+  error.hidden = true;
+  error.textContent = "";
+  for (const el of addForm.elements) {
+    if (el.removeAttribute) el.removeAttribute("aria-invalid");
+  }
+}
+
+function showFormError(message, field) {
+  const error = document.getElementById("add-error");
+  error.hidden = false;
+  error.textContent = message;
+  const input = field ? addForm.elements.namedItem(field) : null;
+  if (input && input.focus) {
+    input.setAttribute("aria-invalid", "true");
+    input.focus();
+  }
+}
+
+function fillPortfolioList() {
+  const names = portfolioNames(state.holdings);
+  const list = document.getElementById("portfolio-names");
+  const group = document.getElementById("portfolio-suggestions");
+  list.replaceChildren();
+  group.replaceChildren();
+  group.hidden = names.length === 0;
+  for (const name of names) {
+    const option = document.createElement("option");
+    option.value = name;
+    list.append(option);
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "suggestion";
+    button.textContent = name;
+    group.append(button);
+  }
+}
+
+function openAdd(trigger) {
+  if (!state.ok) {
+    showNotice(
+      "Add a holding",
+      "Holdings saved on this device could not be read. They were left untouched.",
+      trigger,
+    );
+    return;
+  }
+  addForm.reset();
+  hideFormError();
+  document.getElementById("add-replaces").hidden = !state.isExample;
+  fillPortfolioList();
+  addReturnFocus = trigger || null;
+  if (typeof addDialog.showModal === "function") {
+    addDialog.classList.remove("fallback");
+    if (!addDialog.open) addDialog.showModal();
+  } else {
+    addDialog.classList.add("fallback");
+    addDialog.setAttribute("open", "");
+  }
+  document.getElementById("add-ticker").focus();
+}
+
+function restoreAddFocus() {
+  if (addReturnFocus && document.contains(addReturnFocus)) addReturnFocus.focus();
+  addReturnFocus = null;
+}
+
+function closeAdd() {
+  if (typeof addDialog.close === "function" && addDialog.open) {
+    addDialog.close();
+    return;
+  }
+  addDialog.removeAttribute("open");
+  addDialog.classList.remove("fallback");
+  restoreAddFocus();
+}
+
+addDialog.addEventListener("close", restoreAddFocus);
+document.querySelector("#add-cancel").addEventListener("click", closeAdd);
+
+document.querySelector("#portfolio-suggestions").addEventListener("click", (event) => {
+  const button = event.target.closest("button");
+  if (!button) return;
+  const input = document.getElementById("add-portfolio");
+  input.value = button.textContent;
+  hideFormError();
+  input.focus();
+});
+
+document.querySelector("#add-ticker").addEventListener("input", (event) => {
+  const next = event.target.value.toUpperCase().replace(/\s+/g, "");
+  if (next !== event.target.value) event.target.value = next;
+});
+
+addForm.addEventListener("input", () => {
+  if (!document.getElementById("add-error").hidden) hideFormError();
+});
+
+function focusHolding(ticker, portfolio) {
+  for (const button of tbody.querySelectorAll(".ticker-button")) {
+    if (button.dataset.ticker === ticker && button.dataset.portfolio === portfolio) {
+      button.closest("tr")?.scrollIntoView({ block: "nearest" });
+      button.focus();
+      return;
+    }
+  }
+}
+
+function persist(next) {
+  try {
+    saveState(next);
+    next.persisted = true;
+  } catch {
+    next.persisted = false;
+  }
+  state = next;
+  render(state);
+}
+
+addForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  const result = addHolding(state, {
+    ticker: addForm.elements.ticker.value,
+    portfolio: addForm.elements.portfolio.value,
+    shares: addForm.elements.shares.value,
+    costBasis: addForm.elements.costBasis.value,
+    lastPrice: addForm.elements.lastPrice.value,
+    previousClose: addForm.elements.previousClose.value,
+  });
+  if (!result.ok) {
+    showFormError(result.message, result.field);
+    return;
+  }
+  addReturnFocus = null;
+  persist(result.state);
+  closeAdd();
+  focusHolding(result.holding.ticker, result.holding.portfolio);
+});
+
 document.querySelector("#add-holding").addEventListener("click", (event) => {
-  showNotice(
-    "Add a holding",
-    "Adding a holding by ticker is not available in this version.",
-    event.currentTarget,
-  );
+  openAdd(event.currentTarget);
+});
+
+document.querySelector("#clear-example").addEventListener("click", () => {
+  const result = clearExampleData(state);
+  if (!result.ok) return;
+  persist(result.state);
+  document.querySelector("#add-holding").focus();
 });
 
 document.querySelector("#update-prices").addEventListener("click", (event) => {
@@ -74,13 +221,32 @@ function changeCell(percentText, dollarText, sign) {
   return node;
 }
 
+function metricCell(percentText, dollarText, sign) {
+  if (percentText === EMPTY_MARK) {
+    const node = cell("td", "num flat", EMPTY_MARK);
+    node.setAttribute("aria-label", "No price yet");
+    return node;
+  }
+  return changeCell(percentText, dollarText, sign);
+}
+
 function renderSummary(presented) {
   const summary = document.getElementById("summary");
   summary.removeAttribute("aria-busy");
   summary.replaceChildren(
     summaryCard("Total value", presented.totalValueText, null, "total"),
-    summaryCard("Today", presented.todayPercentText, presented.todayDollarText, presented.todaySign),
-    summaryCard("Life", presented.lifePercentText, presented.lifeDollarText, presented.lifeSign),
+    summaryCard(
+      "Today",
+      presented.todayPercentText,
+      presented.todayDollar == null ? null : presented.todayDollarText,
+      presented.todaySign,
+    ),
+    summaryCard(
+      "Life",
+      presented.lifePercentText,
+      presented.lifeDollar == null ? null : presented.lifeDollarText,
+      presented.lifeSign,
+    ),
   );
 }
 
@@ -89,6 +255,7 @@ function summaryCard(label, primary, secondary, kind) {
   card.className = `summary-card ${kind}`;
   const kicker = cell("p", "kicker", label);
   const figure = cell("p", "figure", primary);
+  if (primary === EMPTY_MARK) figure.setAttribute("aria-label", "No price yet");
   card.append(kicker, figure);
   if (secondary) {
     card.append(cell("p", "figure secondary", secondary));
@@ -108,6 +275,8 @@ function renderTable(presented) {
     toggle.type = "button";
     toggle.className = "ticker-button";
     toggle.textContent = row.holding.ticker;
+    toggle.dataset.ticker = row.holding.ticker;
+    toggle.dataset.portfolio = row.holding.portfolio;
     toggle.setAttribute("aria-expanded", "false");
     toggle.setAttribute("aria-controls", `edit-${index}`);
     toggle.setAttribute(
@@ -119,9 +288,10 @@ function renderTable(presented) {
     const portfolio = cell("td", "portfolio", row.holding.portfolio);
     const shares = cell("td", "num", row.sharesText);
     const cost = cell("td", "num", row.costBasisText);
-    const today = changeCell(row.todayPercentText, row.todayDollarText, row.todaySign);
-    const life = changeCell(row.lifePercentText, row.lifeDollarText, row.lifeSign);
-    const total = cell("td", "num total", row.totalValueText);
+    const today = metricCell(row.todayPercentText, row.todayDollarText, row.todaySign);
+    const life = metricCell(row.lifePercentText, row.lifeDollarText, row.lifeSign);
+    const total = cell("td", row.totalValue == null ? "num total flat" : "num total", row.totalValueText);
+    if (row.totalValue == null) total.setAttribute("aria-label", "No price yet");
 
     holdingRow.append(equity, portfolio, shares, cost, today, life, total);
 
@@ -203,13 +373,13 @@ function showFatal(message) {
   banner.textContent = message;
 }
 
-function render(state) {
-  document.title = state.isExample ? "Portfolio (example data)" : "Portfolio";
-  show("example-banner", state.isExample);
-  show("storage-banner", state.persisted === false);
-  show("error-banner", state.ok === false);
+function render(next) {
+  document.title = next.isExample ? "Portfolio (example data)" : "Portfolio";
+  show("example-banner", next.isExample === true);
+  show("storage-banner", next.persisted === false);
+  show("error-banner", next.ok === false);
 
-  if (!state.ok) {
+  if (!next.ok) {
     document.getElementById("summary").replaceChildren();
     document.getElementById("summary").removeAttribute("aria-busy");
     show("legend", false);
@@ -221,7 +391,7 @@ function render(state) {
 
   const good = [];
   let skipped = 0;
-  for (const holding of state.holdings) {
+  for (const holding of next.holdings) {
     if (isCompleteHolding(holding)) good.push(holding);
     else skipped += 1;
   }
@@ -239,7 +409,7 @@ function render(state) {
   const presented = presentPortfolio(good);
   renderSummary(presented);
   renderTable(presented);
-  const heading = state.isExample ? "Example holdings" : "Holdings";
+  const heading = next.isExample ? "Example holdings" : "Holdings";
   document.getElementById("table-heading").textContent = heading;
   show("legend", true);
   show("empty", false);
@@ -248,7 +418,8 @@ function render(state) {
 }
 
 try {
-  render(loadState());
+  state = loadState();
+  render(state);
 } catch (error) {
   console.error(error);
   showFatal("Holdings could not be shown.");
