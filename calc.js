@@ -5,12 +5,12 @@ export const EMPTY_MARK = "—";
 //   total value = shares × last price
 //   today $     = shares × (last price - previous close)
 //   today %     = (last price - previous close) / previous close
-//   life $      = total value - cost basis
-//   life %      = life $ / cost basis
-// Cost basis is the total dollars recorded for that row, not a per-share price.
-// A zero previous close or a zero cost basis has no percent (shown as n/a).
+//   total cost  = cost basis per share × shares
+//   life $      = total value - total cost
+//   life %      = life $ / total cost
+// Cost basis is the price paid per share. A zero previous close or a zero total cost has no percent (shown as n/a).
 // Portfolio today % = sum of today $ / sum of (shares × previous close)
-// Portfolio life %  = sum of life $ / sum of cost basis
+// Portfolio life %  = sum of life $ / sum of total cost
 
 export function roundCents(amount) {
   if (!Number.isFinite(amount)) {
@@ -51,17 +51,22 @@ function optionalNumber(value) {
   return Number.isFinite(n) ? n : null;
 }
 
+export function totalCost(shares, costPerShare) {
+  return roundCents(readNumber(shares, "shares") * readNumber(costPerShare, "costBasis"));
+}
+
 export function computeHolding(holding) {
   const shares = readNumber(holding.shares, "shares");
-  const costBasis = readNumber(holding.costBasis, "costBasis");
+  const costPerShare = readNumber(holding.costBasis, "costBasis");
   const lastPrice = readNumber(holding.lastPrice, "lastPrice");
   const previousClose = readNumber(holding.previousClose, "previousClose");
 
   const totalValue = roundCents(shares * lastPrice);
+  const spent = totalCost(shares, costPerShare);
   const todayDollar = roundCents(shares * (lastPrice - previousClose));
-  const lifeDollar = roundCents(totalValue - costBasis);
+  const lifeDollar = roundCents(totalValue - spent);
   const todayPercent = previousClose === 0 ? null : (lastPrice - previousClose) / previousClose;
-  const lifePercent = costBasis === 0 ? null : lifeDollar / costBasis;
+  const lifePercent = spent === 0 ? null : lifeDollar / spent;
 
   return { totalValue, todayDollar, todayPercent, lifeDollar, lifePercent };
 }
@@ -126,10 +131,10 @@ export function presentHolding(holding) {
 
   if (previous === null) {
     const shares = readNumber(holding.shares, "shares");
-    const costBasis = readNumber(holding.costBasis, "costBasis");
+    const spent = totalCost(shares, holding.costBasis);
     const totalValue = roundCents(shares * last);
-    const lifeDollar = roundCents(totalValue - costBasis);
-    const lifePercent = costBasis === 0 ? null : lifeDollar / costBasis;
+    const lifeDollar = roundCents(totalValue - spent);
+    const lifePercent = spent === 0 ? null : lifeDollar / spent;
     return {
       totalValue,
       todayDollar: null,
@@ -207,7 +212,9 @@ export function presentPortfolio(holdings) {
 
   const totalValue = allValued ? sumCents(rows.map((row) => row.totalValue)) : null;
   const lifeDollar = allValued ? sumCents(rows.map((row) => row.lifeDollar)) : null;
-  const costBasis = allValued ? sumCents(rows.map((row) => Number(row.holding.costBasis))) : null;
+  const costBasis = allValued
+    ? sumCents(rows.map((row) => totalCost(row.holding.shares, row.holding.costBasis)))
+    : null;
   const lifePercent = !allValued || costBasis === 0 ? null : lifeDollar / costBasis;
 
   const todayDollar = allMoved ? sumCents(rows.map((row) => row.todayDollar)) : null;

@@ -111,7 +111,7 @@ test("a last price without a previous close fills Life and Total only", () => {
     ticker: "VTI",
     portfolio: "IRA",
     shares: 10,
-    costBasis: 2500,
+    costBasis: 250,
     lastPrice: 260,
     previousClose: null,
   });
@@ -150,8 +150,8 @@ test("totals stay a dash until every row has the price that total needs", () => 
   assert.equal(mixed.lifeDollarText, EMPTY_MARK);
 
   const missingClose = presentPortfolio([
-    { ticker: "VTI", portfolio: "IRA", shares: 10, costBasis: 100, lastPrice: 12, previousClose: null },
-    { ticker: "VTI", portfolio: "Roth IRA", shares: 2, costBasis: 50, lastPrice: 20, previousClose: 25 },
+    { ticker: "VTI", portfolio: "IRA", shares: 10, costBasis: 10, lastPrice: 12, previousClose: null },
+    { ticker: "VTI", portfolio: "Roth IRA", shares: 2, costBasis: 25, lastPrice: 20, previousClose: 25 },
   ]);
   assert.equal(missingClose.totalValue, 160);
   assert.equal(missingClose.lifeDollar, 10);
@@ -160,8 +160,8 @@ test("totals stay a dash until every row has the price that total needs", () => 
   assert.equal(missingClose.lifeDollarText, "+$10.00");
 
   const both = presentPortfolio([
-    { ticker: "VTI", portfolio: "IRA", shares: 10, costBasis: 100, lastPrice: 12, previousClose: 10 },
-    { ticker: "VTI", portfolio: "Roth IRA", shares: 2, costBasis: 50, lastPrice: 20, previousClose: 25 },
+    { ticker: "VTI", portfolio: "IRA", shares: 10, costBasis: 10, lastPrice: 12, previousClose: 10 },
+    { ticker: "VTI", portfolio: "Roth IRA", shares: 2, costBasis: 25, lastPrice: 20, previousClose: 25 },
   ]);
   assert.equal(both.totalValue, 160);
   assert.equal(both.todayDollar, 10);
@@ -295,7 +295,7 @@ test("the page offers clear example data and a device-only quote update", () => 
   assert.doesNotMatch(app, /Live prices are not available/);
   assert.doesNotMatch(app, /Adding a holding by ticker is not available/);
   assert.doesNotMatch(app, /is not available in this version/);
-  assert.match(sw, /const CACHE = "portfolio-v5"/);
+  assert.match(sw, /const CACHE = "portfolio-v6"/);
   assert.match(sw, /\.\/quotes\.js/);
   const fetchAt = sw.indexOf('addEventListener("fetch"');
   const finnhubAt = sw.indexOf("finnhub.io", fetchAt);

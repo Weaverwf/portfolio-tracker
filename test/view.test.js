@@ -5,11 +5,15 @@ import { SAMPLE_HOLDINGS } from "../sample.js";
 import {
   FILTER_KEY,
   FINNHUB_KEY,
+  SCHEMA_VERSION,
   STORAGE_KEY,
   exportFilename,
   holdingsForView,
   loadFilter,
+  loadState,
   parseImport,
+  parseStored,
+  perShareFromTotal,
   portfolioNames,
   replaceHoldings,
   saveFilter,
@@ -120,7 +124,8 @@ test("export is a dated holdings file and leaves the key behind", () => {
     updatedAt: "2026-10-19T18:45:00.000Z",
     holdings: SAMPLE_HOLDINGS.map((row) => ({ ...row, apiKey: "test-token" })),
   });
-  assert.deepEqual(Object.keys(record).sort(), ["holdings", "updatedAt"]);
+  assert.deepEqual(Object.keys(record).sort(), ["holdings", "updatedAt", "version"]);
+  assert.equal(record.version, 2);
   assert.deepEqual(Object.keys(record.holdings[0]).sort(), [
     "costBasis",
     "id",
@@ -141,6 +146,7 @@ test("export is a dated holdings file and leaves the key behind", () => {
   assert.equal(imported.count, 5);
   assert.equal(imported.updatedAt, "2026-10-19T18:45:00.000Z");
   assert.equal(imported.holdings[0].ticker, "AAPL");
+  assert.equal(imported.holdings[0].costBasis, 130);
   assert.equal(imported.holdings[0].lastPrice, 228.5);
   const replaced = replaceHoldings({ ok: true, isExample: true, holdings: [], persisted: true }, imported.holdings, imported.updatedAt);
   assert.equal(replaced.state.isExample, false);
@@ -179,4 +185,82 @@ test("import checks the file and does not replace it on its own", () => {
   assert.equal(withKey.count, 1);
   assert.equal(JSON.stringify(withKey.holdings).includes("test-token"), false);
   assert.equal(withKey.holdings[0].lastPrice, null);
+});
+
+test("a saved total cost is converted once", () => {
+  assert.equal(perShareFromTotal(500, 0), 500);
+  assert.equal(perShareFromTotal(5200, 40), 130);
+  const old = JSON.stringify({
+    isExample: false,
+    holdings: [
+      {
+        id: "mine",
+        ticker: "VTI",
+        portfolio: "IRA",
+        shares: 10,
+        costBasis: 500,
+        lastPrice: 60,
+        previousClose: 55,
+      },
+    ],
+  });
+  const first = parseStored(old);
+  assert.equal(first.shouldSave, true);
+  assert.equal(first.schema, SCHEMA_VERSION);
+  assert.equal(first.holdings[0].costBasis, 50);
+  const again = parseStored(JSON.stringify(toStoredRecord(first)));
+  assert.equal(again.shouldSave, false);
+  assert.equal(again.holdings[0].costBasis, 50);
+
+  const store = new Map();
+  const previous = globalThis.localStorage;
+  globalThis.localStorage = {
+    getItem(key) {
+      return store.has(key) ? store.get(key) : null;
+    },
+    setItem(key, value) {
+      store.set(key, String(value));
+    },
+    removeItem(key) {
+      store.delete(key);
+    },
+  };
+  try {
+    store.set(STORAGE_KEY, old);
+    const loaded = loadState();
+    assert.equal(loaded.holdings[0].costBasis, 50);
+    assert.equal(loaded.persisted, true);
+    const second = loadState();
+    assert.equal(second.holdings[0].costBasis, 50);
+    assert.equal(JSON.parse(store.get(STORAGE_KEY)).schema, SCHEMA_VERSION);
+  } finally {
+    if (previous === undefined) delete globalThis.localStorage;
+    else globalThis.localStorage = previous;
+  }
+});
+
+test("an old export is converted and a new export is read as per share", () => {
+  const oldFile = parseImport(
+    JSON.stringify({
+      holdings: [
+        { ticker: "VTI", portfolio: "IRA", shares: 10, costBasis: 500, lastPrice: 60, previousClose: 55 },
+      ],
+    }),
+  );
+  assert.equal(oldFile.ok, true);
+  assert.equal(oldFile.holdings[0].costBasis, 50);
+  const row = presentPortfolio(oldFile.holdings).rows[0];
+  assert.equal(row.lifeDollar, 100);
+  assert.equal(row.lifePercentText, "+20.00%");
+
+  const current = parseImport(
+    JSON.stringify({
+      version: 2,
+      holdings: [
+        { ticker: "VTI", portfolio: "IRA", shares: 10, costBasis: 50, lastPrice: 60, previousClose: 55 },
+      ],
+    }),
+  );
+  assert.equal(current.holdings[0].costBasis, 50);
+  assert.equal(presentPortfolio(current.holdings).lifeDollar, 100);
 });

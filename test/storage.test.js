@@ -32,6 +32,7 @@ test("empty storage is filled with example holdings", () => {
 test("a saved record is kept as stored", () => {
   const state = parseStored(
     JSON.stringify({
+      schema: 2,
       isExample: false,
       holdings: [
         {

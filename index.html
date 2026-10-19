@@ -122,7 +122,7 @@
                 </th>
                 <th scope="col" class="num">
                   <span class="label">Cost Basis</span>
-                  <span class="sub">total $</span>
+                  <span class="sub">per share</span>
                 </th>
                 <th scope="col" class="num sortable" aria-sort="none">
                   <button type="button" class="sort-button" data-sort="today">
@@ -152,7 +152,7 @@
       <p id="empty" class="empty" hidden>No holdings are stored on this device yet.</p>
 
       <p class="footnote">
-        Figures are calculated on this device from shares, cost basis, last price, and previous close.
+        Figures are calculated on this device from shares, cost basis per share, last price, and previous close.
         Update sends each ticker and the Finnhub key to Finnhub. This is a personal record, not financial advice.
       </p>
     </main>
@@ -199,7 +199,7 @@
           <input id="add-shares" name="shares" type="text" inputmode="decimal" autocomplete="off" enterkeyhint="next" />
         </div>
         <div class="field">
-          <label for="add-cost"><span class="label">Cost basis <span class="sub">total $</span></span></label>
+          <label for="add-cost"><span class="label">Cost basis per share ($)</span></label>
           <input id="add-cost" name="costBasis" type="text" inputmode="decimal" autocomplete="off" enterkeyhint="next" />
         </div>
         <div class="field">

@@ -4,6 +4,8 @@ import { SAMPLE_HOLDINGS } from "./sample.js";
 export const STORAGE_KEY = "portfolio-tracker.v1";
 export const FINNHUB_KEY = "portfolio-tracker.finnhub";
 export const FILTER_KEY = "portfolio-tracker.view";
+export const SCHEMA_VERSION = 2;
+export const EXPORT_VERSION = 2;
 export const PORTFOLIO_MAX = 40;
 
 export const MESSAGES = {
@@ -11,7 +13,7 @@ export const MESSAGES = {
   portfolio: "Enter a portfolio name.",
   portfolioLong: "Enter a shorter portfolio name.",
   shares: "Enter a number of shares greater than zero.",
-  cost: "Enter a cost basis of zero or more.",
+  cost: "Enter a cost basis per share of zero or more.",
   lastPrice: "Enter a last price of zero or more, or leave it blank.",
   previousClose: "Enter a previous close of zero or more, or leave it blank.",
   unreadable: "Holdings saved on this device could not be read. They were left untouched.",
@@ -259,8 +261,22 @@ export function clearExampleData(state) {
   };
 }
 
+export function perShareFromTotal(total, shares) {
+  const amount = Number(total);
+  const count = Number(shares);
+  if (!Number.isFinite(amount)) return total;
+  if (!Number.isFinite(count) || !(count > 0)) return roundCents(amount);
+  return roundCents(amount / count);
+}
+
+function migrateHoldingCost(holding) {
+  if (!holding || typeof holding !== "object") return holding;
+  return { ...holding, costBasis: perShareFromTotal(holding.costBasis, holding.shares) };
+}
+
 export function toStoredRecord(state) {
   const record = {
+    schema: SCHEMA_VERSION,
     isExample: state.isExample === true,
     holdings: state.holdings,
   };
@@ -303,6 +319,7 @@ const EXPORT_FIELDS = ["id", "ticker", "portfolio", "shares", "costBasis", "last
 
 export function toExportRecord(state) {
   const record = {
+    version: EXPORT_VERSION,
     holdings: (state?.holdings || []).map((row) => {
       const copy = {};
       for (const field of EXPORT_FIELDS) {
@@ -334,10 +351,15 @@ export function parseImport(raw) {
   if (!Array.isArray(rows)) return { ok: false, message: "This file does not contain holdings." };
   if (rows.length === 0) return { ok: false, message: "This file has no holdings." };
 
+  const version = Array.isArray(parsed) ? 1 : Number(parsed?.version);
+  const legacyTotal = !(version >= EXPORT_VERSION);
   const holdings = [];
   const seenIds = new Set();
   for (const row of rows) {
-    const built = buildHolding(row);
+    const source = legacyTotal && row && typeof row === "object"
+      ? { ...row, costBasis: perShareFromTotal(row.costBasis, row.shares) }
+      : row;
+    const built = buildHolding(source);
     if (!built.ok) {
       const ticker = normalizeTicker(row?.ticker);
       const who = ticker ? `${ticker} could not be read. ` : "A row could not be read. ";
@@ -387,6 +409,7 @@ export function parseStored(raw) {
       ok: true,
       isExample: true,
       holdings: cloneSample(),
+      schema: SCHEMA_VERSION,
       updatedAt: null,
       shouldSave: true,
     };
@@ -403,12 +426,14 @@ export function parseStored(raw) {
     return { ok: false, isExample: false, holdings: [], updatedAt: null, shouldSave: false };
   }
 
+  const legacy = !(Number(parsed.schema) >= SCHEMA_VERSION);
   return {
     ok: true,
     isExample: parsed.isExample === true,
-    holdings: parsed.holdings,
+    holdings: legacy ? parsed.holdings.map(migrateHoldingCost) : parsed.holdings,
+    schema: SCHEMA_VERSION,
     updatedAt: typeof parsed.updatedAt === "string" ? parsed.updatedAt : null,
-    shouldSave: false,
+    shouldSave: legacy,
   };
 }
 
@@ -421,6 +446,7 @@ export function loadState() {
       ok: true,
       isExample: true,
       holdings: cloneSample(),
+      schema: SCHEMA_VERSION,
       updatedAt: null,
       shouldSave: false,
       persisted: false,

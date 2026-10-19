@@ -106,7 +106,7 @@ test("displayed row dollars add up to the portfolio dollars", () => {
 test("a zero previous close or cost basis has no percent", () => {
   const noClose = computeHolding({
     shares: 10,
-    costBasis: 40,
+    costBasis: 4,
     lastPrice: 5,
     previousClose: 0,
   });
@@ -132,7 +132,7 @@ test("a zero previous close or cost basis has no percent", () => {
 test("fractional shares", () => {
   const row = computeHolding({
     shares: 2.5,
-    costBasis: 20,
+    costBasis: 8,
     lastPrice: 10,
     previousClose: 8,
   });
@@ -153,6 +153,27 @@ test("a flat change keeps a plus sign and is not a gain or a loss", () => {
   assert.equal(row.todayDollar, 0);
   assert.equal(formatMoney(row.todayDollar, { signed: true }), "+$0.00");
   assert.equal(formatPercent(row.todayPercent), "+0.00%");
+});
+
+test("life uses the cost basis per share", () => {
+  const row = computeHolding({
+    shares: 10,
+    costBasis: 50,
+    lastPrice: 60,
+    previousClose: 55,
+  });
+  assert.equal(row.totalValue, 600);
+  assert.equal(row.lifeDollar, 100);
+  assert.equal(formatPercent(row.lifePercent), "+20.00%");
+  assert.equal(formatMoney(row.lifeDollar, { signed: true }), "+$100.00");
+
+  const portfolio = presentPortfolio([
+    { ticker: "VTI", portfolio: "IRA", shares: 10, costBasis: 50, lastPrice: 60, previousClose: 55 },
+    { ticker: "VXUS", portfolio: "IRA", shares: 4, costBasis: 25, lastPrice: 30, previousClose: 28 },
+  ]);
+  assert.equal(portfolio.costBasis, 600);
+  assert.equal(portfolio.lifeDollar, 120);
+  assert.equal(portfolio.lifePercentText, "+20.00%");
 });
 
 test("rejects numbers that are not finite", () => {

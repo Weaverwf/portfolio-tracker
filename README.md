@@ -29,12 +29,13 @@ Dollars are rounded to the cent:
 - Total value = shares × last price
 - Today $ = shares × (last price − previous close)
 - Today % = (last price − previous close) ÷ previous close
-- Life $ = total value − cost basis
-- Life % = life $ ÷ cost basis
+- Total cost = cost basis per share × shares
+- Life $ = total value − total cost
+- Life % = life $ ÷ total cost
 
-Cost basis is the **total dollars** recorded for that row, not a per-share price. For the whole table, Today % is the sum of the row dollars divided by the previous total value. Life % is the sum of the row dollars divided by the sum of cost basis.
+Cost basis is the price paid **per share**. For the whole table, Today % is the sum of the row dollars divided by the previous total value. Life % is the sum of the row dollars divided by the sum of total cost.
 
-If the previous close is zero, or the cost basis is zero, that percent is shown as n/a.
+If the previous close is zero, or the total cost is zero, that percent is shown as n/a.
 
 Gains are green and start with +. Losses are red and start with −.
 
@@ -54,6 +55,7 @@ The saved shape is:
 
 ```json
 {
+  "schema": 2,
   "isExample": true,
   "holdings": [
     {
@@ -61,7 +63,7 @@ The saved shape is:
       "ticker": "AAPL",
       "portfolio": "IRA",
       "shares": 40,
-      "costBasis": 5200,
+      "costBasis": 130,
       "lastPrice": 228.5,
       "previousClose": 225
     }
@@ -69,7 +71,7 @@ The saved shape is:
 }
 ```
 
-`lastPrice` and `previousClose` are per share. Either one may be `null` when it was left blank. `costBasis` is the total for the row.
+`lastPrice`, `previousClose`, and `costBasis` are per share. A price may be `null` when it was left blank. `schema` 2 means cost basis is already per share. A saved copy from before that, with no schema, is converted once: cost per share = stored total ÷ shares. A share count of zero is left unchanged. The converted copy is written back with schema 2, so the division does not run again.
 
 ## Offline, and a home screen icon
 
@@ -107,7 +109,7 @@ Use GitHub Pages if the files already live in a GitHub repository.
 ## This version
 
 - The table is the screen. On a narrow phone, swipe sideways; the ticker column stays put.
-- **Add** (the plus) stores a holding on this device: ticker, portfolio, shares, cost basis, and optional prices.
+- **Add** (the plus) stores a holding on this device: ticker, portfolio, shares, cost basis per share, and optional prices.
 - **Settings** (the gear) stores a Finnhub key on this device only. The key is not in this project. Show and Hide change whether the field is readable. The note on that screen says the key stays on this device.
 - **Update** asks Finnhub once for each distinct ticker, then fills last price and previous close on every matching row. The same ticker in two portfolios is one request. Requests are spaced about 1.2 seconds apart, under the free plan's 60 calls a minute. While it runs, the button says Updating and does not accept another tap. After a price comes back, the page shows the device's local time, such as Updated 7:45 AM.
 - A ticker that fails, or comes back as zero, keeps its old price. Those tickers are listed in a short warning. With no network, the page says: No internet; showing last saved prices. The price fields on the form remain a fallback.
