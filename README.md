@@ -113,6 +113,10 @@ Use GitHub Pages if the files already live in a GitHub repository.
 - A ticker that fails, or comes back as zero, keeps its old price. Those tickers are listed in a short warning. With no network, the page says: No internet; showing last saved prices. The price fields on the form remain a fallback.
 - Finnhub's free quote is for US stocks, up to 60 calls a minute, with a separate cap of 30 calls a second. The quote docs describe it as real-time and do not state a 15-minute delay. International real-time quotes are an enterprise feature. Mutual fund data is not in the free plan. The free plan lists US ETF coverage, while the quote docs say US stocks, so an ETF can come back without a price.
 - Tap a row and choose **Edit**. The ticker stays as saved. Portfolio, shares, cost basis, and the optional prices can change. Moving a ticker into a portfolio that already has it is refused. **Delete holding** asks before it removes the row.
+- Chips above the totals choose All or one portfolio. The table and the top totals follow that choice, and the device remembers it.
+- All shows a subtotal for each portfolio: total value, today, and life. The grand total stays in the cards at the top.
+- Equity, Today, Life, and Total Value headers sort the rows. Tap again to reverse the arrow.
+- **Export holdings** in Settings saves a dated file. On an iPhone or iPad it uses the share sheet when the browser offers one. **Import from file** checks the file, tells you the count, and asks before it replaces what is on the device. The file does not contain the Finnhub key. Holdings live only on this device, and Export is the backup.
 
 ## Files
 
@@ -125,4 +129,4 @@ Use GitHub Pages if the files already live in a GitHub repository.
 | `storage.js` | On-device storage, including the Finnhub key |
 | `sw.js`, `manifest.webmanifest`, `icons/` | Install and offline |
 | `server.js` | Local preview only |
-| `test/` | Checks for the figures, adding a row, editing a row, and mocked quotes |
+| `test/` | Checks for the figures, adding a row, editing a row, quotes, filter, and backup |

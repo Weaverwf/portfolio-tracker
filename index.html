@@ -79,9 +79,13 @@
       <div id="offline-banner" class="banner info" role="status" hidden></div>
       <div id="quote-warning" class="banner" role="status" hidden></div>
 
+      <div id="portfolio-filter" class="filter" role="group" aria-label="Portfolios" hidden></div>
+
       <section id="summary" class="summary" aria-live="polite" aria-busy="true">
         <p id="loading">Loading holdings stored on this device…</p>
       </section>
+
+      <section id="subtotals" class="subtotals" aria-label="Portfolio subtotals" hidden></section>
 
       <p id="legend" class="legend" hidden>
         Today is the last price compared with the previous close. Life is the total value compared with the cost basis.
@@ -104,9 +108,11 @@
           <table aria-labelledby="table-heading">
             <thead>
               <tr>
-                <th scope="col" class="equity">
-                  <span class="label">Equity</span>
-                  <span class="sub">ticker</span>
+                <th scope="col" class="equity sortable" aria-sort="none">
+                  <button type="button" class="sort-button" data-sort="ticker">
+                    <span class="label">Equity <span class="arrow" aria-hidden="true"></span></span>
+                    <span class="sub">ticker</span>
+                  </button>
                 </th>
                 <th scope="col">
                   <span class="label">Portfolio</span>
@@ -118,17 +124,23 @@
                   <span class="label">Cost Basis</span>
                   <span class="sub">total $</span>
                 </th>
-                <th scope="col" class="num">
-                  <span class="label">Today</span>
-                  <span class="sub">% and $</span>
+                <th scope="col" class="num sortable" aria-sort="none">
+                  <button type="button" class="sort-button" data-sort="today">
+                    <span class="label">Today <span class="arrow" aria-hidden="true"></span></span>
+                    <span class="sub">% and $</span>
+                  </button>
                 </th>
-                <th scope="col" class="num">
-                  <span class="label">Life</span>
-                  <span class="sub">% and $</span>
+                <th scope="col" class="num sortable" aria-sort="none">
+                  <button type="button" class="sort-button" data-sort="life">
+                    <span class="label">Life <span class="arrow" aria-hidden="true"></span></span>
+                    <span class="sub">% and $</span>
+                  </button>
                 </th>
-                <th scope="col" class="num">
-                  <span class="label">Total Value</span>
-                  <span class="sub">$</span>
+                <th scope="col" class="num sortable" aria-sort="none">
+                  <button type="button" class="sort-button" data-sort="total">
+                    <span class="label">Total Value <span class="arrow" aria-hidden="true"></span></span>
+                    <span class="sub">$</span>
+                  </button>
                 </th>
               </tr>
             </thead>
@@ -245,6 +257,20 @@
         <div class="form-actions">
           <button type="submit" class="button button-primary" id="settings-save">Save</button>
           <button type="button" class="button button-ghost" id="settings-cancel">Cancel</button>
+        </div>
+        <p id="backup-note">Holdings live only on this device. Export is the backup.</p>
+        <div class="backup-actions">
+          <button type="button" class="button button-primary" id="export-holdings">Export holdings</button>
+          <button type="button" class="button button-ghost" id="import-holdings">Import from file</button>
+          <input id="import-file" type="file" accept="application/json,.json" hidden />
+        </div>
+        <p id="import-error" class="form-error" role="alert" hidden></p>
+        <div id="import-confirm" hidden>
+          <p id="import-confirm-text"></p>
+          <div class="form-actions">
+            <button type="button" class="button button-danger" id="import-yes">Replace holdings</button>
+            <button type="button" class="button button-ghost" id="import-no">Keep current</button>
+          </div>
         </div>
       </form>
     </dialog>

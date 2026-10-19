@@ -168,6 +168,34 @@ function sumCents(values) {
   return cents / 100;
 }
 
+export function sortRows(rows, key, direction) {
+  if (!key) return rows.slice();
+  const factor = direction === "desc" ? -1 : 1;
+  const amount = (row) => {
+    if (key === "ticker") return row.holding?.ticker || "";
+    if (key === "total") return row.totalValue;
+    if (key === "today") return row.todayPercent;
+    if (key === "life") return row.lifePercent;
+    return null;
+  };
+  const missing = (value) => value === null || value === undefined || value === "";
+
+  return rows.slice().sort((a, b) => {
+    const av = amount(a);
+    const bv = amount(b);
+    if (missing(av) && missing(bv)) return 0;
+    if (missing(av)) return 1;
+    if (missing(bv)) return -1;
+    if (typeof av === "string") {
+      const cmp = av.localeCompare(bv);
+      if (cmp !== 0) return cmp * factor;
+    } else if (av !== bv) {
+      return (av < bv ? -1 : 1) * factor;
+    }
+    return String(a.holding?.ticker || "").localeCompare(String(b.holding?.ticker || ""));
+  });
+}
+
 export function presentPortfolio(holdings) {
   const rows = holdings.map((holding) => ({
     holding,

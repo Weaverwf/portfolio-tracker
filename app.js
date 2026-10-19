@@ -1,4 +1,4 @@
-import { EMPTY_MARK, isCompleteHolding, presentPortfolio } from "./calc.js";
+import { EMPTY_MARK, isCompleteHolding, presentPortfolio, sortRows } from "./calc.js";
 import {
   OFFLINE_MESSAGE,
   applyQuotes,
@@ -11,13 +11,21 @@ import {
   addHolding,
   clearExampleData,
   deleteHolding,
+  exportFilename,
   findDuplicate,
+  holdingsForView,
   loadApiKey,
+  loadFilter,
   loadState,
+  normalizePortfolio,
   normalizeTicker,
+  parseImport,
   portfolioNames,
+  replaceHoldings,
   saveApiKey,
+  saveFilter,
   saveState,
+  toExportRecord,
   updateHolding,
 } from "./storage.js";
 
@@ -35,6 +43,9 @@ let settingsReturnFocus = null;
 let formMode = { kind: "add", id: null };
 let quoteNotice = { warning: "", offline: false };
 let updating = false;
+let viewFilter = "";
+let sortState = { key: null, dir: "asc" };
+let pendingImport = null;
 
 function show(id, on) {
   document.getElementById(id).hidden = !on;
@@ -337,6 +348,16 @@ function closeSettings() {
 settingsDialog.addEventListener("close", restoreSettingsFocus);
 document.querySelector("#settings-cancel").addEventListener("click", closeSettings);
 
+function resetImportPrompt() {
+  pendingImport = null;
+  document.getElementById("import-confirm").hidden = true;
+  document.getElementById("import-confirm-text").textContent = "";
+  const error = document.getElementById("import-error");
+  error.hidden = true;
+  error.textContent = "";
+  document.getElementById("import-file").value = "";
+}
+
 function openSettings(trigger, prompt) {
   const input = document.getElementById("finnhub-key");
   const toggle = document.getElementById("toggle-key");
@@ -347,6 +368,7 @@ function openSettings(trigger, prompt) {
   const note = document.getElementById("settings-prompt");
   note.hidden = !prompt;
   note.textContent = prompt || "";
+  resetImportPrompt();
   settingsReturnFocus = trigger || null;
   showDialog(settingsDialog);
   input.focus();
@@ -475,6 +497,112 @@ document.querySelector("#update-prices").addEventListener("click", (event) => {
   runUpdate(event.currentTarget);
 });
 
+function showImportError(message) {
+  const error = document.getElementById("import-error");
+  error.hidden = false;
+  error.textContent = message;
+  document.getElementById("import-confirm").hidden = true;
+  pendingImport = null;
+}
+
+async function exportHoldingsFile() {
+  if (!state.ok) {
+    showImportError("Holdings saved on this device could not be read. They were left untouched.");
+    return;
+  }
+  if (!state.holdings || state.holdings.length === 0) {
+    showImportError("There are no holdings to export.");
+    return;
+  }
+  const record = toExportRecord(state);
+  const name = exportFilename(new Date());
+  const file = new File([JSON.stringify(record, null, 2)], name, { type: "application/json" });
+  if (navigator.canShare && navigator.canShare({ files: [file] })) {
+    try {
+      await navigator.share({ files: [file], title: name });
+      return;
+    } catch (error) {
+      if (error && error.name === "AbortError") return;
+    }
+  }
+  const url = URL.createObjectURL(file);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = name;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+document.querySelector("#export-holdings").addEventListener("click", () => {
+  exportHoldingsFile();
+});
+
+document.querySelector("#import-holdings").addEventListener("click", () => {
+  document.getElementById("import-file").click();
+});
+
+document.querySelector("#import-file").addEventListener("change", async (event) => {
+  const file = event.target.files && event.target.files[0];
+  event.target.value = "";
+  if (!file) return;
+  let text;
+  try {
+    text = await file.text();
+  } catch {
+    showImportError("This file could not be read.");
+    return;
+  }
+  const parsed = parseImport(text);
+  if (!parsed.ok) {
+    showImportError(parsed.message);
+    return;
+  }
+  pendingImport = parsed;
+  document.getElementById("import-error").hidden = true;
+  const confirm = document.getElementById("import-confirm");
+  document.getElementById("import-confirm-text").textContent =
+    `This file has ${parsed.count} ${parsed.count === 1 ? "holding" : "holdings"}. Replace the holdings on this device?`;
+  confirm.hidden = false;
+  document.getElementById("import-yes").focus();
+});
+
+document.querySelector("#import-no").addEventListener("click", () => {
+  resetImportPrompt();
+});
+
+document.querySelector("#import-yes").addEventListener("click", () => {
+  if (!pendingImport) return;
+  const result = replaceHoldings(state, pendingImport.holdings, pendingImport.updatedAt);
+  if (!result.ok) {
+    showImportError(result.message);
+    return;
+  }
+  pendingImport = null;
+  persist(result.state);
+  closeSettings();
+});
+
+document.querySelector("#portfolio-filter").addEventListener("click", (event) => {
+  const chip = event.target.closest(".filter-chip");
+  if (!chip) return;
+  viewFilter = chip.dataset.portfolio || "";
+  try {
+    saveFilter(viewFilter);
+  } catch {
+    /* The choice still applies for this visit. */
+  }
+  render(state);
+});
+
+document.querySelector("thead").addEventListener("click", (event) => {
+  const button = event.target.closest("[data-sort]");
+  if (!button) return;
+  const key = button.dataset.sort;
+  if (sortState.key === key) sortState.dir = sortState.dir === "asc" ? "desc" : "asc";
+  else sortState = { key, dir: key === "ticker" ? "asc" : "desc" };
+  render(state);
+});
+
 function cell(tag, className, text) {
   const node = document.createElement(tag);
   if (className) node.className = className;
@@ -532,8 +660,80 @@ function summaryCard(label, primary, secondary, kind) {
   return card;
 }
 
+function renderSortHeaders() {
+  for (const button of document.querySelectorAll("[data-sort]")) {
+    const on = sortState.key === button.dataset.sort;
+    const th = button.closest("th");
+    th.setAttribute("aria-sort", on ? (sortState.dir === "asc" ? "ascending" : "descending") : "none");
+    button.querySelector(".arrow").textContent = on ? (sortState.dir === "asc" ? " ▲" : " ▼") : "";
+  }
+}
+
+function renderFilters(holdings, active) {
+  const bar = document.getElementById("portfolio-filter");
+  const names = portfolioNames(holdings);
+  bar.replaceChildren();
+  if (names.length === 0) {
+    bar.hidden = true;
+    return;
+  }
+  bar.hidden = false;
+  const choices = [{ label: "All", value: "" }, ...names.map((name) => ({ label: name, value: name }))];
+  for (const choice of choices) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "filter-chip";
+    button.textContent = choice.label;
+    button.dataset.portfolio = choice.value;
+    const pressed = choice.value === "" ? active === "" : active.toLowerCase() === choice.value.toLowerCase();
+    button.setAttribute("aria-pressed", pressed ? "true" : "false");
+    bar.append(button);
+  }
+}
+
+function metricLine(label, percentText, dollarText) {
+  if (percentText === EMPTY_MARK) return `${label} ${EMPTY_MARK}`;
+  return `${label} ${percentText} ${dollarText}`;
+}
+
+function renderSubtotals(holdings, active) {
+  const section = document.getElementById("subtotals");
+  section.replaceChildren();
+  const names = portfolioNames(holdings);
+  if (active || names.length === 0) {
+    section.hidden = true;
+    return;
+  }
+  section.hidden = false;
+  for (const name of names) {
+    const presented = presentPortfolio(holdingsForView(holdings, name));
+    const line = document.createElement("article");
+    line.className = "subtotal-line";
+    const title = document.createElement("h3");
+    title.textContent = name;
+    const value = cell(
+      "p",
+      presented.totalValue == null ? "flat" : "",
+      presented.totalValue == null ? `Total value ${EMPTY_MARK}` : `Total value ${presented.totalValueText}`,
+    );
+    const today = cell(
+      "p",
+      presented.todaySign,
+      metricLine("Today", presented.todayPercentText, presented.todayDollarText),
+    );
+    const life = cell(
+      "p",
+      presented.lifeSign,
+      metricLine("Life", presented.lifePercentText, presented.lifeDollarText),
+    );
+    line.append(title, value, today, life);
+    section.append(line);
+  }
+}
+
 function renderTable(presented) {
   tbody.replaceChildren();
+  renderSortHeaders();
   presented.rows.forEach((row, index) => {
     const holdingRow = document.createElement("tr");
     holdingRow.className = index % 2 === 1 ? "holding band" : "holding";
@@ -654,6 +854,8 @@ function render(next) {
     show("table-card", false);
     show("empty", false);
     show("skipped-banner", false);
+    show("portfolio-filter", false);
+    show("subtotals", false);
     return;
   }
 
@@ -665,19 +867,36 @@ function render(next) {
   }
   show("skipped-banner", skipped > 0);
 
+  const names = portfolioNames(good);
+  const match = names.find((name) => name.toLowerCase() === normalizePortfolio(viewFilter).toLowerCase());
+  if (viewFilter && !match) {
+    viewFilter = "";
+    try {
+      saveFilter("");
+    } catch {
+      /* The visit returns to All. */
+    }
+  }
+  const active = match || "";
+  renderFilters(good, active);
+
   if (good.length === 0) {
     document.getElementById("summary").replaceChildren();
     document.getElementById("summary").removeAttribute("aria-busy");
     show("legend", false);
     show("table-card", false);
+    show("subtotals", false);
     show("empty", true);
     return;
   }
 
-  const presented = presentPortfolio(good);
+  const visible = holdingsForView(good, active);
+  const presented = presentPortfolio(visible);
+  presented.rows = sortRows(presented.rows, sortState.key, sortState.dir);
   renderSummary(presented);
+  renderSubtotals(good, active);
   renderTable(presented);
-  const heading = next.isExample ? "Example holdings" : "Holdings";
+  const heading = active || (next.isExample ? "Example holdings" : "Holdings");
   document.getElementById("table-heading").textContent = heading;
   show("legend", true);
   show("empty", false);
@@ -687,6 +906,7 @@ function render(next) {
 
 try {
   state = loadState();
+  viewFilter = loadFilter();
   render(state);
 } catch (error) {
   console.error(error);

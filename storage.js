@@ -1,8 +1,9 @@
-import { roundCents } from "./calc.js";
+import { presentPortfolio, roundCents } from "./calc.js";
 import { SAMPLE_HOLDINGS } from "./sample.js";
 
 export const STORAGE_KEY = "portfolio-tracker.v1";
 export const FINNHUB_KEY = "portfolio-tracker.finnhub";
+export const FILTER_KEY = "portfolio-tracker.view";
 export const PORTFOLIO_MAX = 40;
 
 export const MESSAGES = {
@@ -37,6 +38,15 @@ export function normalizePortfolio(value) {
 
 export function isValidTicker(ticker) {
   return ticker.length >= 1 && ticker.length <= 5 && /^[A-Z](?:[A-Z.\-]*[A-Z])?$/.test(ticker);
+}
+
+export function holdingsForView(holdings, filterName) {
+  const list = holdings || [];
+  const wanted = normalizePortfolio(filterName).toLowerCase();
+  if (!wanted || wanted === "all") return list;
+  const match = portfolioNames(list).find((name) => name.toLowerCase() === wanted);
+  if (!match) return list;
+  return list.filter((row) => normalizePortfolio(row?.portfolio).toLowerCase() === match.toLowerCase());
 }
 
 export function portfolioNames(holdings) {
@@ -272,6 +282,99 @@ export function saveApiKey(value) {
   if (!trimmed) localStorage.removeItem(FINNHUB_KEY);
   else localStorage.setItem(FINNHUB_KEY, trimmed);
   return trimmed;
+}
+
+export function loadFilter() {
+  try {
+    return localStorage.getItem(FILTER_KEY) || "";
+  } catch {
+    return "";
+  }
+}
+
+export function saveFilter(name) {
+  const trimmed = normalizePortfolio(name);
+  if (!trimmed || trimmed.toLowerCase() === "all") localStorage.removeItem(FILTER_KEY);
+  else localStorage.setItem(FILTER_KEY, trimmed);
+  return trimmed && trimmed.toLowerCase() !== "all" ? trimmed : "";
+}
+
+const EXPORT_FIELDS = ["id", "ticker", "portfolio", "shares", "costBasis", "lastPrice", "previousClose"];
+
+export function toExportRecord(state) {
+  const record = {
+    holdings: (state?.holdings || []).map((row) => {
+      const copy = {};
+      for (const field of EXPORT_FIELDS) {
+        if (row && Object.hasOwn(row, field)) copy[field] = row[field];
+      }
+      return copy;
+    }),
+  };
+  const updatedAt = carriedUpdatedAt(state);
+  if (updatedAt) record.updatedAt = updatedAt;
+  return record;
+}
+
+export function exportFilename(date) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `portfolio-holdings-${y}-${m}-${d}.json`;
+}
+
+export function parseImport(raw) {
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return { ok: false, message: "This file could not be read." };
+  }
+  const rows = Array.isArray(parsed) ? parsed : parsed?.holdings;
+  if (!Array.isArray(rows)) return { ok: false, message: "This file does not contain holdings." };
+  if (rows.length === 0) return { ok: false, message: "This file has no holdings." };
+
+  const holdings = [];
+  const seenIds = new Set();
+  for (const row of rows) {
+    const built = buildHolding(row);
+    if (!built.ok) {
+      const ticker = normalizeTicker(row?.ticker);
+      const who = ticker ? `${ticker} could not be read. ` : "A row could not be read. ";
+      return { ok: false, message: `${who}${built.message}` };
+    }
+    const duplicate = findDuplicate(holdings, built.holding.ticker, built.holding.portfolio);
+    if (duplicate) {
+      return { ok: false, message: `${built.holding.ticker} is already in ${duplicate.portfolio}.` };
+    }
+    let id = typeof row?.id === "string" ? row.id.trim() : "";
+    if (!id || seenIds.has(id)) id = createId();
+    seenIds.add(id);
+    holdings.push({ ...built.holding, id });
+  }
+
+  let updatedAt = null;
+  if (parsed && typeof parsed === "object" && typeof parsed.updatedAt === "string") {
+    const when = new Date(parsed.updatedAt);
+    if (!Number.isNaN(when.getTime())) updatedAt = parsed.updatedAt;
+  }
+
+  return { ok: true, holdings, updatedAt, count: holdings.length };
+}
+
+export function replaceHoldings(state, holdings, updatedAt) {
+  if (!state || state.ok === false) return { ok: false, message: MESSAGES.unreadable };
+  return {
+    ok: true,
+    state: {
+      ok: true,
+      isExample: false,
+      holdings: holdings.map((row) => ({ ...row })),
+      updatedAt: typeof updatedAt === "string" && updatedAt ? updatedAt : null,
+      shouldSave: true,
+      persisted: state.persisted !== false,
+    },
+  };
 }
 
 export function saveState(state) {
