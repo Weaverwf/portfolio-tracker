@@ -14,6 +14,7 @@ export const MESSAGES = {
   previousClose: "Enter a previous close of zero or more, or leave it blank.",
   unreadable: "Holdings saved on this device could not be read. They were left untouched.",
   noExample: "There is no example data to clear.",
+  missing: "That holding is not on this device.",
 };
 
 function cloneSample() {
@@ -159,6 +160,65 @@ export function addHolding(state, input, options = {}) {
       ok: true,
       isExample: false,
       holdings: existing.map((row) => ({ ...row })).concat(holding),
+      shouldSave: true,
+      persisted: state.persisted !== false,
+    },
+  };
+}
+
+function copyHoldings(holdings) {
+  return (holdings || []).map((row) => ({ ...row }));
+}
+
+export function updateHolding(state, id, input) {
+  if (!state || state.ok === false) return { ok: false, message: MESSAGES.unreadable };
+  const holdings = state.holdings || [];
+  const index = holdings.findIndex((row) => row && row.id === id);
+  if (index < 0) return { ok: false, message: MESSAGES.missing };
+
+  const current = holdings[index];
+  const built = buildHolding({ ...input, ticker: current.ticker });
+  if (!built.ok) return built;
+
+  const duplicate = findDuplicate(
+    holdings.filter((row) => row && row.id !== id),
+    built.holding.ticker,
+    built.holding.portfolio,
+  );
+  if (duplicate) {
+    return {
+      ok: false,
+      field: "portfolio",
+      message: `${built.holding.ticker} is already in ${duplicate.portfolio}.`,
+    };
+  }
+
+  const holding = { ...built.holding, id: current.id };
+  return {
+    ok: true,
+    holding,
+    state: {
+      ok: true,
+      isExample: state.isExample === true,
+      holdings: holdings.map((row, rowIndex) => (rowIndex === index ? holding : row ? { ...row } : row)),
+      shouldSave: true,
+      persisted: state.persisted !== false,
+    },
+  };
+}
+
+export function deleteHolding(state, id) {
+  if (!state || state.ok === false) return { ok: false, message: MESSAGES.unreadable };
+  const holdings = state.holdings || [];
+  const index = holdings.findIndex((row) => row && row.id === id);
+  if (index < 0) return { ok: false, message: MESSAGES.missing };
+  const next = copyHoldings(holdings.filter((row) => row && row.id !== id));
+  return {
+    ok: true,
+    state: {
+      ok: true,
+      isExample: next.length > 0 && state.isExample === true,
+      holdings: next,
       shouldSave: true,
       persisted: state.persisted !== false,
     },

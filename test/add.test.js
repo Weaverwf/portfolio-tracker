@@ -276,7 +276,7 @@ test("a holding with no price is still a complete row", () => {
   );
 });
 
-test("the page offers clear example data and keeps edit and update as stubs", () => {
+test("the page offers clear example data and keeps update as a stub", () => {
   const html = readFileSync(new URL("../index.html", import.meta.url), "utf8");
   const app = readFileSync(new URL("../app.js", import.meta.url), "utf8");
   const sw = readFileSync(new URL("../sw.js", import.meta.url), "utf8");
@@ -284,12 +284,16 @@ test("the page offers clear example data and keeps edit and update as stubs", ()
   assert.match(html, /id="add-form"/);
   assert.match(html, /name="lastPrice"/);
   assert.match(html, /name="previousClose"/);
+  assert.match(html, /Delete holding/);
+  assert.match(html, /Keep it/);
   assert.match(app, /clearExampleData/);
   assert.match(app, /addHolding/);
-  assert.match(app, /Editing \$\{edit\.dataset\.ticker\}/);
+  assert.match(app, /updateHolding/);
+  assert.match(app, /deleteHolding/);
   assert.match(app, /Live prices are not available/);
   assert.doesNotMatch(app, /Adding a holding by ticker is not available/);
-  assert.match(sw, /const CACHE = "portfolio-v2"/);
+  assert.doesNotMatch(app, /is not available in this version/);
+  assert.match(sw, /const CACHE = "portfolio-v3"/);
   assert.equal(existsSync(new URL("../.nojekyll", import.meta.url)), true);
   assert.equal(existsSync(new URL("../portfolio-tracker/index.html", import.meta.url)), false);
   assert.equal(existsSync(new URL("../portfolio-tracker.zip", import.meta.url)), false);

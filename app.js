@@ -1,5 +1,14 @@
 import { EMPTY_MARK, isCompleteHolding, presentPortfolio } from "./calc.js";
-import { addHolding, clearExampleData, loadState, portfolioNames, saveState } from "./storage.js";
+import {
+  addHolding,
+  clearExampleData,
+  deleteHolding,
+  findDuplicate,
+  loadState,
+  portfolioNames,
+  saveState,
+  updateHolding,
+} from "./storage.js";
 
 const notice = document.querySelector("#notice");
 const noticeTitle = document.querySelector("#notice-title");
@@ -11,6 +20,7 @@ const addForm = document.querySelector("#add-form");
 let state = { ok: false, isExample: false, holdings: [], persisted: true };
 let lastFocus = null;
 let addReturnFocus = null;
+let formMode = { kind: "add", id: null };
 
 function show(id, on) {
   document.getElementById(id).hidden = !on;
@@ -86,6 +96,36 @@ function fillPortfolioList() {
   }
 }
 
+function fieldNumber(value) {
+  if (value === null || value === undefined || value === "") return "";
+  const n = Number(value);
+  return Number.isFinite(n) ? String(n) : "";
+}
+
+function showDialog(dialog) {
+  if (typeof dialog.showModal === "function") {
+    dialog.classList.remove("fallback");
+    if (!dialog.open) dialog.showModal();
+  } else {
+    dialog.classList.add("fallback");
+    dialog.setAttribute("open", "");
+  }
+}
+
+function setFormChrome(mode) {
+  formMode = mode;
+  const editing = mode.kind === "edit";
+  document.getElementById("add-title").textContent = editing ? "Edit holding" : "Add a holding";
+  document.getElementById("add-intro").hidden = editing;
+  document.getElementById("edit-intro").hidden = !editing;
+  document.getElementById("ticker-lock-note").hidden = !editing;
+  document.getElementById("add-ticker").readOnly = editing;
+  document.getElementById("add-ticker").setAttribute("aria-readonly", editing ? "true" : "false");
+  document.getElementById("add-delete").hidden = !editing;
+  document.getElementById("form-actions").hidden = false;
+  document.getElementById("delete-confirm").hidden = true;
+}
+
 function openAdd(trigger) {
   if (!state.ok) {
     showNotice(
@@ -97,17 +137,41 @@ function openAdd(trigger) {
   }
   addForm.reset();
   hideFormError();
+  setFormChrome({ kind: "add", id: null });
   document.getElementById("add-replaces").hidden = !state.isExample;
   fillPortfolioList();
   addReturnFocus = trigger || null;
-  if (typeof addDialog.showModal === "function") {
-    addDialog.classList.remove("fallback");
-    if (!addDialog.open) addDialog.showModal();
-  } else {
-    addDialog.classList.add("fallback");
-    addDialog.setAttribute("open", "");
-  }
+  showDialog(addDialog);
   document.getElementById("add-ticker").focus();
+}
+
+function openEdit(holding, trigger) {
+  if (!state.ok) {
+    showNotice(
+      "Edit holding",
+      "Holdings saved on this device could not be read. They were left untouched.",
+      trigger,
+    );
+    return;
+  }
+  if (!holding || !holding.id) {
+    showNotice("Edit holding", "That holding is not on this device.", trigger);
+    return;
+  }
+  addForm.reset();
+  hideFormError();
+  setFormChrome({ kind: "edit", id: holding.id });
+  document.getElementById("add-replaces").hidden = true;
+  fillPortfolioList();
+  addForm.elements.ticker.value = holding.ticker;
+  addForm.elements.portfolio.value = holding.portfolio;
+  addForm.elements.shares.value = fieldNumber(holding.shares);
+  addForm.elements.costBasis.value = fieldNumber(holding.costBasis);
+  addForm.elements.lastPrice.value = fieldNumber(holding.lastPrice);
+  addForm.elements.previousClose.value = fieldNumber(holding.previousClose);
+  addReturnFocus = trigger || null;
+  showDialog(addDialog);
+  document.getElementById("add-portfolio").focus();
 }
 
 function restoreAddFocus() {
@@ -167,16 +231,23 @@ function persist(next) {
   render(state);
 }
 
-addForm.addEventListener("submit", (event) => {
-  event.preventDefault();
-  const result = addHolding(state, {
+function formValues() {
+  return {
     ticker: addForm.elements.ticker.value,
     portfolio: addForm.elements.portfolio.value,
     shares: addForm.elements.shares.value,
     costBasis: addForm.elements.costBasis.value,
     lastPrice: addForm.elements.lastPrice.value,
     previousClose: addForm.elements.previousClose.value,
-  });
+  };
+}
+
+addForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  const result =
+    formMode.kind === "edit"
+      ? updateHolding(state, formMode.id, formValues())
+      : addHolding(state, formValues());
   if (!result.ok) {
     showFormError(result.message, result.field);
     return;
@@ -185,6 +256,39 @@ addForm.addEventListener("submit", (event) => {
   persist(result.state);
   closeAdd();
   focusHolding(result.holding.ticker, result.holding.portfolio);
+});
+
+document.querySelector("#add-delete").addEventListener("click", () => {
+  const holding = (state.holdings || []).find((row) => row && row.id === formMode.id);
+  if (!holding) {
+    showFormError("That holding is not on this device.");
+    return;
+  }
+  document.getElementById("delete-confirm-text").textContent =
+    `Delete ${holding.ticker} in ${holding.portfolio}? This removes it from this device.`;
+  document.getElementById("form-actions").hidden = true;
+  document.getElementById("add-delete").hidden = true;
+  document.getElementById("delete-confirm").hidden = false;
+  document.getElementById("delete-confirm-yes").focus();
+});
+
+document.querySelector("#delete-confirm-no").addEventListener("click", () => {
+  document.getElementById("delete-confirm").hidden = true;
+  document.getElementById("form-actions").hidden = false;
+  document.getElementById("add-delete").hidden = formMode.kind !== "edit";
+  document.getElementById("add-delete").focus();
+});
+
+document.querySelector("#delete-confirm-yes").addEventListener("click", () => {
+  const result = deleteHolding(state, formMode.id);
+  if (!result.ok) {
+    showFormError(result.message);
+    return;
+  }
+  addReturnFocus = null;
+  persist(result.state);
+  closeAdd();
+  document.querySelector("#add-holding").focus();
 });
 
 document.querySelector("#add-holding").addEventListener("click", (event) => {
@@ -300,11 +404,13 @@ function renderTable(presented) {
     editRow.id = `edit-${index}`;
     editRow.hidden = true;
 
-    const editCell = cell("td", "equity");
+    const editCell = cell("td", "edit-span");
+    editCell.colSpan = 7;
     const editButton = document.createElement("button");
     editButton.type = "button";
     editButton.className = "button button-primary edit-choice";
     editButton.textContent = "Edit";
+    editButton.dataset.id = row.holding.id || "";
     editButton.dataset.ticker = row.holding.ticker;
     editButton.dataset.portfolio = row.holding.portfolio;
     editButton.setAttribute(
@@ -312,10 +418,7 @@ function renderTable(presented) {
       `Edit ${row.holding.ticker} in ${row.holding.portfolio}`,
     );
     editCell.append(editButton);
-
-    const rest = cell("td", "edit-rest");
-    rest.colSpan = 6;
-    editRow.append(editCell, rest);
+    editRow.append(editCell);
 
     tbody.append(holdingRow, editRow);
   });
@@ -340,11 +443,10 @@ function toggleRow(holdingRow, { focusEdit = false } = {}) {
 tbody.addEventListener("click", (event) => {
   const edit = event.target.closest(".edit-choice");
   if (edit) {
-    showNotice(
-      "Edit",
-      `Editing ${edit.dataset.ticker} in ${edit.dataset.portfolio} is not available in this version.`,
-      edit,
-    );
+    const holding =
+      (state.holdings || []).find((row) => row && edit.dataset.id && row.id === edit.dataset.id) ||
+      findDuplicate(state.holdings, edit.dataset.ticker, edit.dataset.portfolio);
+    openEdit(holding, edit);
     return;
   }
   const holdingRow = event.target.closest("tr.holding");

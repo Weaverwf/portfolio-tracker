@@ -109,7 +109,7 @@ Use GitHub Pages if the files already live in a GitHub repository.
 - The table is the screen. On a narrow phone, swipe sideways; the ticker column stays put.
 - **Add** (the plus) stores a holding on this device: ticker, portfolio, shares, cost basis, and optional prices.
 - **Update** is visible. Live prices are not in this version. Figures use the prices saved with each row.
-- Tap a row and an **Edit** choice appears. Changing a row is not in this version.
+- Tap a row and choose **Edit**. The ticker stays as saved. Portfolio, shares, cost basis, and the optional prices can change. Moving a ticker into a portfolio that already has it is refused. **Delete holding** asks before it removes the row.
 
 ## Files
 
@@ -121,4 +121,4 @@ Use GitHub Pages if the files already live in a GitHub repository.
 | `storage.js` | On-device storage |
 | `sw.js`, `manifest.webmanifest`, `icons/` | Install and offline |
 | `server.js` | Local preview only |
-| `test/` | Checks for the figures and for adding a row |
+| `test/` | Checks for the figures, adding a row, and editing a row |

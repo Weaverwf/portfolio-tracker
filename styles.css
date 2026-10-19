@@ -462,8 +462,17 @@ tr.holding:active th.equity {
   background: #d5e6dc;
 }
 
+tr.edit-slot td.edit-span {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  background: var(--open);
+  box-shadow: none;
+}
+
 .edit-choice {
-  width: 100%;
+  width: min(18rem, calc(100vw - 64px));
+  min-width: 8.5rem;
   min-height: 52px;
 }
 
@@ -616,6 +625,30 @@ dialog.fallback[open] {
   background: var(--card);
   color: var(--pine-deep);
   border-color: var(--pine);
+}
+
+.button-danger {
+  background: var(--loss);
+  color: var(--cream);
+  border-color: var(--loss);
+}
+
+#add-ticker[readonly] {
+  background: var(--paper);
+  color: var(--ink);
+}
+
+#add-delete {
+  width: 100%;
+  margin-top: 12px;
+}
+
+#delete-confirm {
+  margin-top: 14px;
+}
+
+#delete-confirm p {
+  font-weight: 700;
 }
 
 #add-dialog {

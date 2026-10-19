@@ -138,8 +138,9 @@
         <p id="add-intro">
           The ticker is 1 to 5 letters. A period or a hyphen is allowed. Leave a price blank and the table shows a dash.
         </p>
+        <p id="edit-intro" hidden>The ticker stays as saved. Change the other fields, then save.</p>
         <div class="field">
-          <label for="add-ticker"><span class="label">Ticker</span></label>
+          <label for="add-ticker"><span class="label">Ticker <span class="sub" id="ticker-lock-note" hidden>stays as saved</span></span></label>
           <input
             id="add-ticker"
             name="ticker"
@@ -191,9 +192,17 @@
           />
         </div>
         <p id="add-error" class="form-error" role="alert" hidden></p>
-        <div class="form-actions">
+        <div class="form-actions" id="form-actions">
           <button type="submit" class="button button-primary" id="add-save">Save</button>
           <button type="button" class="button button-ghost" id="add-cancel">Cancel</button>
+        </div>
+        <button type="button" class="button button-danger" id="add-delete" hidden>Delete holding</button>
+        <div id="delete-confirm" hidden>
+          <p id="delete-confirm-text"></p>
+          <div class="form-actions">
+            <button type="button" class="button button-danger" id="delete-confirm-yes">Delete holding</button>
+            <button type="button" class="button button-ghost" id="delete-confirm-no">Keep it</button>
+          </div>
         </div>
       </form>
     </dialog>
