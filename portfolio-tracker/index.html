@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#234237" />
+    <meta name="format-detection" content="telephone=no" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="Portfolio" />
+    <title>Portfolio</title>
+    <meta
+      name="description"
+      content="Personal holdings table kept on this device. Example data until you store your own."
+    />
+    <link rel="manifest" href="manifest.webmanifest" />
+    <link rel="icon" href="icons/icon-192.png" type="image/png" />
+    <link rel="apple-touch-icon" href="icons/icon-180.png" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <a class="skip" href="#holdings-region">Skip to holdings</a>
+
+    <header class="app-header">
+      <div class="inner">
+        <div class="titles">
+          <h1>Portfolio</h1>
+          <p>On this device only</p>
+        </div>
+        <div class="actions">
+          <button type="button" class="button button-quiet" id="update-prices">Update</button>
+          <button type="button" class="button button-loud" id="add-holding">
+            <svg width="28" height="28" viewBox="0 0 28 28" aria-hidden="true">
+              <path
+                d="M14 5.5v17M5.5 14h17"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="3"
+                stroke-linecap="round"
+              />
+            </svg>
+            Add
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <main id="holdings-region">
+      <div id="example-banner" class="banner" hidden>
+        <strong>Example data.</strong>
+        These rows are made up so you can see the table. AAPL is listed in an IRA and a Roth IRA.
+        The prices are samples. This is not your account.
+      </div>
+      <div id="storage-banner" class="banner info" hidden>
+        This browser blocked on-device storage, so these example holdings are shown for this visit only.
+      </div>
+      <div id="error-banner" class="banner error" role="alert" hidden>
+        Holdings saved on this device could not be read. They were left untouched.
+      </div>
+      <div id="skipped-banner" class="banner error" role="alert" hidden>
+        Some saved rows were missing numbers, so they were left out of the table. The saved copy was not changed.
+      </div>
+
+      <section id="summary" class="summary" aria-live="polite" aria-busy="true">
+        <p id="loading">Loading holdings stored on this device…</p>
+      </section>
+
+      <p id="legend" class="legend" hidden>
+        Today is the last price compared with the previous close. Life is the total value compared with the cost basis.
+      </p>
+
+      <section id="table-card" class="table-card" hidden aria-labelledby="table-heading">
+        <div class="table-intro">
+          <h2 id="table-heading">Holdings</h2>
+          <p id="scroll-hint" class="hint">
+            Swipe sideways for every column. The ticker stays on the left.
+          </p>
+        </div>
+        <div
+          id="table-scroll"
+          class="table-scroll"
+          tabindex="0"
+          aria-label="Holdings table. Scroll sideways for more columns."
+        >
+          <table aria-labelledby="table-heading">
+            <thead>
+              <tr>
+                <th scope="col" class="equity">
+                  <span class="label">Equity</span>
+                  <span class="sub">ticker</span>
+                </th>
+                <th scope="col">
+                  <span class="label">Portfolio</span>
+                </th>
+                <th scope="col" class="num">
+                  <span class="label">Shares</span>
+                </th>
+                <th scope="col" class="num">
+                  <span class="label">Cost Basis</span>
+                  <span class="sub">total $</span>
+                </th>
+                <th scope="col" class="num">
+                  <span class="label">Today</span>
+                  <span class="sub">% and $</span>
+                </th>
+                <th scope="col" class="num">
+                  <span class="label">Life</span>
+                  <span class="sub">% and $</span>
+                </th>
+                <th scope="col" class="num">
+                  <span class="label">Total Value</span>
+                  <span class="sub">$</span>
+                </th>
+              </tr>
+            </thead>
+            <tbody id="holdings"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <p id="empty" class="empty" hidden>No holdings are stored on this device yet.</p>
+
+      <p class="footnote">
+        Calculated on this device from shares, cost basis, last price, and previous close. Nothing is sent
+        off this device. This is a personal record, not financial advice.
+      </p>
+    </main>
+
+    <dialog id="notice" aria-labelledby="notice-title" aria-describedby="notice-body">
+      <h2 id="notice-title"></h2>
+      <p id="notice-body"></p>
+      <button type="button" class="button button-primary" id="notice-close">Close</button>
+    </dialog>
+
+    <noscript>
+      <p class="banner error">JavaScript is required to show holdings stored on this device.</p>
+    </noscript>
+
+    <script type="module" src="app.js"></script>
+  </body>
+</html>
