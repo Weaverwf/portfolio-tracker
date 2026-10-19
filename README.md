@@ -108,7 +108,10 @@ Use GitHub Pages if the files already live in a GitHub repository.
 
 - The table is the screen. On a narrow phone, swipe sideways; the ticker column stays put.
 - **Add** (the plus) stores a holding on this device: ticker, portfolio, shares, cost basis, and optional prices.
-- **Update** is visible. Live prices are not in this version. Figures use the prices saved with each row.
+- **Settings** (the gear) stores a Finnhub key on this device only. The key is not in this project. Show and Hide change whether the field is readable. The note on that screen says the key stays on this device.
+- **Update** asks Finnhub once for each distinct ticker, then fills last price and previous close on every matching row. The same ticker in two portfolios is one request. Requests are spaced about 1.2 seconds apart, under the free plan's 60 calls a minute. While it runs, the button says Updating and does not accept another tap. After a price comes back, the page shows the device's local time, such as Updated 7:45 AM.
+- A ticker that fails, or comes back as zero, keeps its old price. Those tickers are listed in a short warning. With no network, the page says: No internet; showing last saved prices. The price fields on the form remain a fallback.
+- Finnhub's free quote is for US stocks, up to 60 calls a minute, with a separate cap of 30 calls a second. The quote docs describe it as real-time and do not state a 15-minute delay. International real-time quotes are an enterprise feature. Mutual fund data is not in the free plan. The free plan lists US ETF coverage, while the quote docs say US stocks, so an ETF can come back without a price.
 - Tap a row and choose **Edit**. The ticker stays as saved. Portfolio, shares, cost basis, and the optional prices can change. Moving a ticker into a portfolio that already has it is refused. **Delete holding** asks before it removes the row.
 
 ## Files
@@ -117,8 +120,9 @@ Use GitHub Pages if the files already live in a GitHub repository.
 | --- | --- |
 | `index.html`, `styles.css`, `app.js` | The screen |
 | `calc.js` | The arithmetic |
+| `quotes.js` | Finnhub quote requests |
 | `sample.js` | Example rows |
-| `storage.js` | On-device storage |
+| `storage.js` | On-device storage, including the Finnhub key |
 | `sw.js`, `manifest.webmanifest`, `icons/` | Install and offline |
 | `server.js` | Local preview only |
-| `test/` | Checks for the figures, adding a row, and editing a row |
+| `test/` | Checks for the figures, adding a row, editing a row, and mocked quotes |

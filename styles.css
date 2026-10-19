@@ -174,8 +174,44 @@ h1 {
   color: var(--cream);
 }
 
-.button-loud svg {
+.button-loud svg,
+.icon-button svg {
   display: block;
+}
+
+.icon-button {
+  padding-inline: 12px;
+}
+
+#update-prices .update-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+#update-prices.is-busy .update-label::before {
+  content: "";
+  width: 1.05rem;
+  height: 1.05rem;
+  border: 3px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+#update-prices:disabled {
+  opacity: 0.72;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.updated-at {
+  font-size: 1.2rem;
+  font-weight: 700;
 }
 
 main {
@@ -678,6 +714,42 @@ dialog.fallback[open] {
   font-weight: 700;
 }
 
+#settings-dialog {
+  width: min(32rem, calc(100vw - 16px));
+  max-height: calc(100dvh - 16px);
+  overflow-y: auto;
+  padding: 16px 16px calc(14px + env(safe-area-inset-bottom));
+}
+
+#settings-dialog .form-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+#settings-dialog .form-actions .button {
+  width: 100%;
+  margin-top: 0;
+}
+
+#settings-dialog .key-row {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+
+#settings-dialog .key-row input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+#settings-dialog .key-row .button {
+  width: auto;
+  margin-top: 0;
+  padding-inline: 16px;
+}
+
 @media (max-width: 767px) {
   .banner .button {
     width: 100%;
@@ -700,5 +772,9 @@ dialog.fallback[open] {
 @media (prefers-reduced-motion: reduce) {
   * {
     scroll-behavior: auto;
+  }
+
+  #update-prices.is-busy .update-label::before {
+    animation: none;
   }
 }

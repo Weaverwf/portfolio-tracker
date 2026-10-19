@@ -1,6 +1,6 @@
 // Bump CACHE when shipped files change so an installed copy drops the old files.
 // Requests for this app's own files are cached. Nothing else is fetched.
-const CACHE = "portfolio-v3";
+const CACHE = "portfolio-v4";
 
 const SHELL = [
   "./",
@@ -8,6 +8,7 @@ const SHELL = [
   "./styles.css",
   "./app.js",
   "./calc.js",
+  "./quotes.js",
   "./sample.js",
   "./storage.js",
   "./manifest.webmanifest",
@@ -39,6 +40,8 @@ self.addEventListener("fetch", (event) => {
   if (request.method !== "GET") return;
 
   const url = new URL(request.url);
+  // Quote responses stay out of the app cache. The browser must not reuse a price.
+  if (url.hostname === "finnhub.io" || url.hostname.endsWith(".finnhub.io")) return;
   if (url.origin !== self.location.origin) return;
 
   event.respondWith(

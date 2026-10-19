@@ -29,7 +29,17 @@
           <p>On this device only</p>
         </div>
         <div class="actions">
-          <button type="button" class="button button-quiet" id="update-prices">Update</button>
+          <button type="button" class="button button-quiet icon-button" id="open-settings" aria-label="Settings">
+            <svg width="28" height="28" viewBox="0 0 28 28" aria-hidden="true">
+              <path
+                fill="currentColor"
+                d="M12.1 3.2h3.8l.55 2.55a8.6 8.6 0 0 1 2.15 1.25l2.4-.95 1.9 3.25-1.85 1.7c.1.55.15 1.1.15 1.65s-.05 1.1-.15 1.65l1.85 1.7-1.9 3.25-2.4-.95a8.6 8.6 0 0 1-2.15 1.25l-.55 2.55h-3.8l-.55-2.55a8.6 8.6 0 0 1-2.15-1.25l-2.4.95-1.9-3.25 1.85-1.7A8.7 8.7 0 0 1 7.1 14c0-.55.05-1.1.15-1.65l-1.85-1.7 1.9-3.25 2.4.95a8.6 8.6 0 0 1 2.15-1.25l.55-2.55zM14 10.6a3.4 3.4 0 1 0 .01 6.81A3.4 3.4 0 0 0 14 10.6z"
+              />
+            </svg>
+          </button>
+          <button type="button" class="button button-quiet" id="update-prices">
+            <span class="update-label">Update</span>
+          </button>
           <button type="button" class="button button-loud" id="add-holding">
             <svg width="28" height="28" viewBox="0 0 28 28" aria-hidden="true">
               <path
@@ -51,7 +61,7 @@
         <p>
           <strong>Example data.</strong>
           These rows are made up so you can see the table. AAPL is listed in an IRA and a Roth IRA.
-          The prices are samples. This is not your account. Saving a holding replaces these rows.
+          <span id="example-price-note">The prices are samples. </span>This is not your account. Saving a holding replaces these rows.
         </p>
         <button type="button" class="button button-primary" id="clear-example">Clear example data</button>
       </div>
@@ -64,6 +74,10 @@
       <div id="skipped-banner" class="banner error" role="alert" hidden>
         Some saved rows were missing numbers, so they were left out of the table. The saved copy was not changed.
       </div>
+
+      <p id="updated-at" class="updated-at" hidden></p>
+      <div id="offline-banner" class="banner info" role="status" hidden></div>
+      <div id="quote-warning" class="banner" role="status" hidden></div>
 
       <section id="summary" class="summary" aria-live="polite" aria-busy="true">
         <p id="loading">Loading holdings stored on this device…</p>
@@ -126,8 +140,8 @@
       <p id="empty" class="empty" hidden>No holdings are stored on this device yet.</p>
 
       <p class="footnote">
-        Calculated on this device from shares, cost basis, last price, and previous close. Nothing is sent
-        off this device. This is a personal record, not financial advice.
+        Figures are calculated on this device from shares, cost basis, last price, and previous close.
+        Update sends each ticker and the Finnhub key to Finnhub. This is a personal record, not financial advice.
       </p>
     </main>
 
@@ -203,6 +217,34 @@
             <button type="button" class="button button-danger" id="delete-confirm-yes">Delete holding</button>
             <button type="button" class="button button-ghost" id="delete-confirm-no">Keep it</button>
           </div>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="settings-dialog" aria-labelledby="settings-title">
+      <form id="settings-form" novalidate>
+        <h2 id="settings-title">Settings</h2>
+        <p>The Finnhub key stays on this device. It is used only when you tap Update.</p>
+        <p id="settings-prompt" class="form-note" hidden></p>
+        <div class="field">
+          <label for="finnhub-key"><span class="label">Finnhub key</span></label>
+          <div class="key-row">
+            <input
+              id="finnhub-key"
+              name="apiKey"
+              type="password"
+              autocomplete="off"
+              autocapitalize="off"
+              autocorrect="off"
+              spellcheck="false"
+              enterkeyhint="done"
+            />
+            <button type="button" class="button button-ghost" id="toggle-key">Show</button>
+          </div>
+        </div>
+        <div class="form-actions">
+          <button type="submit" class="button button-primary" id="settings-save">Save</button>
+          <button type="button" class="button button-ghost" id="settings-cancel">Cancel</button>
         </div>
       </form>
     </dialog>

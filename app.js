@@ -1,11 +1,22 @@
 import { EMPTY_MARK, isCompleteHolding, presentPortfolio } from "./calc.js";
 import {
+  OFFLINE_MESSAGE,
+  applyQuotes,
+  formatUpdatedAt,
+  uniqueTickers,
+  updateQuotes,
+  warningFor,
+} from "./quotes.js";
+import {
   addHolding,
   clearExampleData,
   deleteHolding,
   findDuplicate,
+  loadApiKey,
   loadState,
+  normalizeTicker,
   portfolioNames,
+  saveApiKey,
   saveState,
   updateHolding,
 } from "./storage.js";
@@ -20,7 +31,10 @@ const addForm = document.querySelector("#add-form");
 let state = { ok: false, isExample: false, holdings: [], persisted: true };
 let lastFocus = null;
 let addReturnFocus = null;
+let settingsReturnFocus = null;
 let formMode = { kind: "add", id: null };
+let quoteNotice = { warning: "", offline: false };
+let updating = false;
 
 function show(id, on) {
   document.getElementById(id).hidden = !on;
@@ -220,13 +234,14 @@ function focusHolding(ticker, portfolio) {
   }
 }
 
-function persist(next) {
+function persist(next, { keepQuoteNotice = false } = {}) {
   try {
     saveState(next);
     next.persisted = true;
   } catch {
     next.persisted = false;
   }
+  if (!keepQuoteNotice) quoteNotice = { warning: "", offline: false };
   state = next;
   render(state);
 }
@@ -302,12 +317,162 @@ document.querySelector("#clear-example").addEventListener("click", () => {
   document.querySelector("#add-holding").focus();
 });
 
-document.querySelector("#update-prices").addEventListener("click", (event) => {
-  showNotice(
-    "Update prices",
-    "Live prices are not available in this version. The figures use the prices saved with each holding on this device.",
-    event.currentTarget,
+const settingsDialog = document.querySelector("#settings-dialog");
+
+function restoreSettingsFocus() {
+  if (settingsReturnFocus && document.contains(settingsReturnFocus)) settingsReturnFocus.focus();
+  settingsReturnFocus = null;
+}
+
+function closeSettings() {
+  if (typeof settingsDialog.close === "function" && settingsDialog.open) {
+    settingsDialog.close();
+    return;
+  }
+  settingsDialog.removeAttribute("open");
+  settingsDialog.classList.remove("fallback");
+  restoreSettingsFocus();
+}
+
+settingsDialog.addEventListener("close", restoreSettingsFocus);
+document.querySelector("#settings-cancel").addEventListener("click", closeSettings);
+
+function openSettings(trigger, prompt) {
+  const input = document.getElementById("finnhub-key");
+  const toggle = document.getElementById("toggle-key");
+  input.type = "password";
+  input.value = loadApiKey();
+  toggle.textContent = "Show";
+  toggle.setAttribute("aria-pressed", "false");
+  const note = document.getElementById("settings-prompt");
+  note.hidden = !prompt;
+  note.textContent = prompt || "";
+  settingsReturnFocus = trigger || null;
+  showDialog(settingsDialog);
+  input.focus();
+}
+
+document.querySelector("#open-settings").addEventListener("click", (event) => {
+  openSettings(event.currentTarget);
+});
+
+document.querySelector("#toggle-key").addEventListener("click", () => {
+  const input = document.getElementById("finnhub-key");
+  const toggle = document.getElementById("toggle-key");
+  const showing = input.type === "password";
+  input.type = showing ? "text" : "password";
+  toggle.textContent = showing ? "Hide" : "Show";
+  toggle.setAttribute("aria-pressed", showing ? "true" : "false");
+  input.focus();
+});
+
+document.querySelector("#settings-form").addEventListener("submit", (event) => {
+  event.preventDefault();
+  const note = document.getElementById("settings-prompt");
+  try {
+    saveApiKey(document.getElementById("finnhub-key").value);
+  } catch {
+    note.hidden = false;
+    note.textContent = "This browser blocked on-device storage, so the key was not saved.";
+    return;
+  }
+  closeSettings();
+});
+
+function setUpdating(on) {
+  const button = document.getElementById("update-prices");
+  button.disabled = on;
+  button.classList.toggle("is-busy", on);
+  button.setAttribute("aria-busy", on ? "true" : "false");
+  button.querySelector(".update-label").textContent = on ? "Updating" : "Update";
+}
+
+function renderQuoteStatus(next = state) {
+  const stamp = typeof next.updatedAt === "string" ? next.updatedAt : "";
+  const when = stamp ? new Date(stamp) : null;
+  const valid = Boolean(when && !Number.isNaN(when.getTime()));
+  const updated = document.getElementById("updated-at");
+  updated.hidden = !valid;
+  updated.textContent = valid ? formatUpdatedAt(when) : "";
+  const warning = document.getElementById("quote-warning");
+  warning.hidden = !quoteNotice.warning;
+  warning.textContent = quoteNotice.warning;
+  const offline = document.getElementById("offline-banner");
+  offline.hidden = !quoteNotice.offline;
+  offline.textContent = quoteNotice.offline ? OFFLINE_MESSAGE : "";
+  document.getElementById("example-price-note").hidden = valid;
+}
+
+async function runUpdate(trigger) {
+  if (updating) return;
+  if (!state.ok) {
+    showNotice(
+      "Update prices",
+      "Holdings saved on this device could not be read. They were left untouched.",
+      trigger,
+    );
+    return;
+  }
+  const apiKey = loadApiKey();
+  if (!apiKey) {
+    openSettings(trigger, "Paste your Finnhub key to update prices.");
+    return;
+  }
+  if (uniqueTickers(state.holdings).length === 0) {
+    showNotice("Update prices", "There are no holdings to update.", trigger);
+    return;
+  }
+
+  updating = true;
+  setUpdating(true);
+  quoteNotice = { warning: "", offline: false };
+  renderQuoteStatus(state);
+  let result;
+  try {
+    result = await updateQuotes({
+      holdings: state.holdings,
+      apiKey,
+      online: navigator.onLine !== false,
+    });
+  } catch (error) {
+    console.error(error);
+    const names = uniqueTickers(state.holdings);
+    result = { reason: "partial", updated: [], failed: names, holdings: state.holdings };
+  } finally {
+    updating = false;
+    setUpdating(false);
+  }
+
+  const stillThere = new Set(uniqueTickers(state.holdings));
+  const failed = (result.failed || []).filter((ticker) => stillThere.has(ticker));
+  quoteNotice = {
+    warning: result.reason === "offline" ? "" : warningFor(failed),
+    offline: result.reason === "offline",
+  };
+  if (!result.updated || result.updated.length === 0) {
+    render(state);
+    return;
+  }
+
+  const byTicker = {};
+  for (const ticker of result.updated) {
+    const row = (result.holdings || []).find((item) => item && normalizeTicker(item.ticker) === ticker);
+    if (!row) continue;
+    byTicker[ticker] = { ok: true, lastPrice: row.lastPrice, previousClose: row.previousClose };
+  }
+  const merged = applyQuotes(state.holdings, byTicker);
+  persist(
+    {
+      ...state,
+      holdings: merged.holdings,
+      updatedAt: new Date().toISOString(),
+    },
+    { keepQuoteNotice: true },
   );
+}
+
+document.querySelector("#update-prices").addEventListener("click", (event) => {
+  runUpdate(event.currentTarget);
 });
 
 function cell(tag, className, text) {
@@ -477,6 +642,7 @@ function showFatal(message) {
 
 function render(next) {
   document.title = next.isExample ? "Portfolio (example data)" : "Portfolio";
+  renderQuoteStatus(next);
   show("example-banner", next.isExample === true);
   show("storage-banner", next.persisted === false);
   show("error-banner", next.ok === false);

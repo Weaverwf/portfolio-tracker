@@ -2,6 +2,7 @@ import { roundCents } from "./calc.js";
 import { SAMPLE_HOLDINGS } from "./sample.js";
 
 export const STORAGE_KEY = "portfolio-tracker.v1";
+export const FINNHUB_KEY = "portfolio-tracker.finnhub";
 export const PORTFOLIO_MAX = 40;
 
 export const MESSAGES = {
@@ -160,6 +161,7 @@ export function addHolding(state, input, options = {}) {
       ok: true,
       isExample: false,
       holdings: existing.map((row) => ({ ...row })).concat(holding),
+      updatedAt: carriedUpdatedAt(state),
       shouldSave: true,
       persisted: state.persisted !== false,
     },
@@ -168,6 +170,10 @@ export function addHolding(state, input, options = {}) {
 
 function copyHoldings(holdings) {
   return (holdings || []).map((row) => ({ ...row }));
+}
+
+function carriedUpdatedAt(state) {
+  return typeof state?.updatedAt === "string" && state.updatedAt ? state.updatedAt : null;
 }
 
 export function updateHolding(state, id, input) {
@@ -201,6 +207,7 @@ export function updateHolding(state, id, input) {
       ok: true,
       isExample: state.isExample === true,
       holdings: holdings.map((row, rowIndex) => (rowIndex === index ? holding : row ? { ...row } : row)),
+      updatedAt: carriedUpdatedAt(state),
       shouldSave: true,
       persisted: state.persisted !== false,
     },
@@ -219,6 +226,7 @@ export function deleteHolding(state, id) {
       ok: true,
       isExample: next.length > 0 && state.isExample === true,
       holdings: next,
+      updatedAt: carriedUpdatedAt(state),
       shouldSave: true,
       persisted: state.persisted !== false,
     },
@@ -234,6 +242,7 @@ export function clearExampleData(state) {
       ok: true,
       isExample: false,
       holdings: [],
+      updatedAt: null,
       shouldSave: true,
       persisted: state.persisted !== false,
     },
@@ -241,10 +250,28 @@ export function clearExampleData(state) {
 }
 
 export function toStoredRecord(state) {
-  return {
+  const record = {
     isExample: state.isExample === true,
     holdings: state.holdings,
   };
+  const updatedAt = carriedUpdatedAt(state);
+  if (updatedAt) record.updatedAt = updatedAt;
+  return record;
+}
+
+export function loadApiKey() {
+  try {
+    return localStorage.getItem(FINNHUB_KEY) || "";
+  } catch {
+    return "";
+  }
+}
+
+export function saveApiKey(value) {
+  const trimmed = String(value ?? "").trim();
+  if (!trimmed) localStorage.removeItem(FINNHUB_KEY);
+  else localStorage.setItem(FINNHUB_KEY, trimmed);
+  return trimmed;
 }
 
 export function saveState(state) {
@@ -257,6 +284,7 @@ export function parseStored(raw) {
       ok: true,
       isExample: true,
       holdings: cloneSample(),
+      updatedAt: null,
       shouldSave: true,
     };
   }
@@ -265,17 +293,18 @@ export function parseStored(raw) {
   try {
     parsed = JSON.parse(raw);
   } catch {
-    return { ok: false, isExample: false, holdings: [], shouldSave: false };
+    return { ok: false, isExample: false, holdings: [], updatedAt: null, shouldSave: false };
   }
 
   if (!parsed || typeof parsed !== "object" || !Array.isArray(parsed.holdings)) {
-    return { ok: false, isExample: false, holdings: [], shouldSave: false };
+    return { ok: false, isExample: false, holdings: [], updatedAt: null, shouldSave: false };
   }
 
   return {
     ok: true,
     isExample: parsed.isExample === true,
     holdings: parsed.holdings,
+    updatedAt: typeof parsed.updatedAt === "string" ? parsed.updatedAt : null,
     shouldSave: false,
   };
 }
@@ -289,6 +318,7 @@ export function loadState() {
       ok: true,
       isExample: true,
       holdings: cloneSample(),
+      updatedAt: null,
       shouldSave: false,
       persisted: false,
     };

@@ -7,6 +7,7 @@ const FILES = [
   "styles.css",
   "app.js",
   "calc.js",
+  "quotes.js",
   "sample.js",
   "storage.js",
   "sw.js",

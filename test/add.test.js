@@ -276,7 +276,7 @@ test("a holding with no price is still a complete row", () => {
   );
 });
 
-test("the page offers clear example data and keeps update as a stub", () => {
+test("the page offers clear example data and a device-only quote update", () => {
   const html = readFileSync(new URL("../index.html", import.meta.url), "utf8");
   const app = readFileSync(new URL("../app.js", import.meta.url), "utf8");
   const sw = readFileSync(new URL("../sw.js", import.meta.url), "utf8");
@@ -290,10 +290,17 @@ test("the page offers clear example data and keeps update as a stub", () => {
   assert.match(app, /addHolding/);
   assert.match(app, /updateHolding/);
   assert.match(app, /deleteHolding/);
-  assert.match(app, /Live prices are not available/);
+  assert.match(app, /Paste your Finnhub key to update prices/);
+  assert.match(app, /updateQuotes/);
+  assert.doesNotMatch(app, /Live prices are not available/);
   assert.doesNotMatch(app, /Adding a holding by ticker is not available/);
   assert.doesNotMatch(app, /is not available in this version/);
-  assert.match(sw, /const CACHE = "portfolio-v3"/);
+  assert.match(sw, /const CACHE = "portfolio-v4"/);
+  assert.match(sw, /\.\/quotes\.js/);
+  const fetchAt = sw.indexOf('addEventListener("fetch"');
+  const finnhubAt = sw.indexOf("finnhub.io", fetchAt);
+  const cacheAt = sw.indexOf("caches.open", fetchAt);
+  assert.ok(finnhubAt > fetchAt && finnhubAt < cacheAt);
   assert.equal(existsSync(new URL("../.nojekyll", import.meta.url)), true);
   assert.equal(existsSync(new URL("../portfolio-tracker/index.html", import.meta.url)), false);
   assert.equal(existsSync(new URL("../portfolio-tracker.zip", import.meta.url)), false);
