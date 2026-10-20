@@ -914,6 +914,14 @@ try {
 }
 
 if ("serviceWorker" in navigator) {
+  const reloadKey = "portfolio-tracker.sw-reload";
+  navigator.serviceWorker.addEventListener("controllerchange", () => {
+    const now = Date.now();
+    const previous = Number(sessionStorage.getItem(reloadKey) || 0);
+    if (now - previous < 10000) return;
+    sessionStorage.setItem(reloadKey, String(now));
+    window.location.reload();
+  });
   window.addEventListener("load", () => {
     navigator.serviceWorker.register("./sw.js").catch((error) => {
       console.warn("Offline support did not start.", error);

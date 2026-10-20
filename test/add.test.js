@@ -295,7 +295,8 @@ test("the page offers clear example data and a device-only quote update", () => 
   assert.doesNotMatch(app, /Live prices are not available/);
   assert.doesNotMatch(app, /Adding a holding by ticker is not available/);
   assert.doesNotMatch(app, /is not available in this version/);
-  assert.match(sw, /const CACHE = "portfolio-v6"/);
+  assert.match(sw, /const CACHE = "portfolio-v7"/);
+  assert.match(sw, /cache:\s*"no-store"/);
   assert.match(sw, /\.\/quotes\.js/);
   const fetchAt = sw.indexOf('addEventListener("fetch"');
   const finnhubAt = sw.indexOf("finnhub.io", fetchAt);

@@ -1,6 +1,6 @@
 // Bump CACHE when shipped files change so an installed copy drops the old files.
 // Requests for this app's own files are cached. Nothing else is fetched.
-const CACHE = "portfolio-v6";
+const CACHE = "portfolio-v7";
 
 const SHELL = [
   "./",
@@ -48,7 +48,7 @@ self.addEventListener("fetch", (event) => {
     (async () => {
       const cache = await caches.open(CACHE);
       try {
-        const fresh = await fetch(request);
+        const fresh = await fetch(request, { cache: "no-store" });
         if (fresh.ok) await cache.put(request, fresh.clone());
         return fresh;
       } catch {

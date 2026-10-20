@@ -130,6 +130,37 @@ test("the top total sums every visible holding, including a one-row portfolio", 
   assert.equal(onlyIra.totalValue, top.totalValue - single.totalValue);
 });
 
+test("a migrated one-row portfolio is in the top total once", () => {
+  const saved = JSON.stringify({
+    isExample: false,
+    holdings: [
+      { id: "ira-a", ticker: "AAA", portfolio: "IRA", shares: 10, costBasis: 500, lastPrice: 60, previousClose: 55 },
+      { id: "ira-b", ticker: "BBB", portfolio: "IRA", shares: 4, costBasis: 100, lastPrice: 30, previousClose: 28 },
+      { id: "roth-c", ticker: "CCC", portfolio: "Roth IRA", shares: 5, costBasis: 150, lastPrice: 40, previousClose: 38 },
+      { id: "roth-d", ticker: "DDD", portfolio: "Roth IRA", shares: 2, costBasis: 40, lastPrice: 25, previousClose: 25 },
+      { id: "tax-e", ticker: "EEE", portfolio: "Taxable", shares: 2, costBasis: 20, lastPrice: 15, previousClose: 12 },
+    ],
+  });
+  const loaded = parseStored(saved);
+  assert.equal(loaded.shouldSave, true);
+  assert.equal(loaded.holdings.find((row) => row.ticker === "EEE").costBasis, 10);
+  assert.equal(loaded.holdings.filter((row) => row.portfolio === "Taxable").length, 1);
+
+  const top = presentPortfolio(holdingsForView(loaded.holdings, ""));
+  const rowTotal = sumCents(top.rows.map((row) => row.totalValue));
+  const ira = presentPortfolio(holdingsForView(loaded.holdings, "IRA")).totalValue;
+  const roth = presentPortfolio(holdingsForView(loaded.holdings, "Roth IRA")).totalValue;
+  const taxable = presentPortfolio(holdingsForView(loaded.holdings, "Taxable")).totalValue;
+  assert.equal(top.rows.length, 5);
+  assert.equal(taxable, 30);
+  assert.equal(top.totalValue, rowTotal);
+  assert.equal(top.totalValue, 1000);
+  assert.equal(top.todayDollar, sumCents(top.rows.map((row) => row.todayDollar)));
+  assert.equal(top.lifeDollar, sumCents(top.rows.map((row) => row.lifeDollar)));
+  assert.equal(ira + roth + taxable, top.totalValue);
+  assert.notEqual(top.totalValue, sumCents([rowTotal, ira, roth, taxable]));
+});
+
 test("column sort orders ticker, total, today, and life, and keeps blanks last", () => {
   const rows = presented();
   assert.deepEqual(
