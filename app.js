@@ -16,6 +16,7 @@ import {
   holdingsForView,
   isInfoTotal,
   loadApiKey,
+  loadTwelveKey,
   portfolioSubtotals,
   loadFilter,
   loadState,
@@ -25,6 +26,7 @@ import {
   portfolioNames,
   replaceHoldings,
   saveApiKey,
+  saveTwelveKey,
   saveFilter,
   saveState,
   toExportRecord,
@@ -417,41 +419,52 @@ function resetImportPrompt() {
   document.getElementById("import-file").value = "";
 }
 
-function openSettings(trigger, prompt) {
-  const input = document.getElementById("finnhub-key");
-  const toggle = document.getElementById("toggle-key");
+function resetKeyField(inputId, buttonId, value) {
+  const input = document.getElementById(inputId);
+  const toggle = document.getElementById(buttonId);
   input.type = "password";
-  input.value = loadApiKey();
+  input.value = value;
   toggle.textContent = "Show";
   toggle.setAttribute("aria-pressed", "false");
+}
+
+function openSettings(trigger, prompt) {
+  resetKeyField("finnhub-key", "toggle-key", loadApiKey());
+  resetKeyField("twelve-key", "toggle-twelve-key", loadTwelveKey());
   const note = document.getElementById("settings-prompt");
   note.hidden = !prompt;
   note.textContent = prompt || "";
   resetImportPrompt();
   settingsReturnFocus = trigger || null;
   showDialog(settingsDialog);
-  input.focus();
+  document.getElementById("finnhub-key").focus();
 }
 
 document.querySelector("#open-settings").addEventListener("click", (event) => {
   openSettings(event.currentTarget);
 });
 
-document.querySelector("#toggle-key").addEventListener("click", () => {
-  const input = document.getElementById("finnhub-key");
-  const toggle = document.getElementById("toggle-key");
-  const showing = input.type === "password";
-  input.type = showing ? "text" : "password";
-  toggle.textContent = showing ? "Hide" : "Show";
-  toggle.setAttribute("aria-pressed", showing ? "true" : "false");
-  input.focus();
-});
+function bindKeyToggle(inputId, buttonId) {
+  document.getElementById(buttonId).addEventListener("click", () => {
+    const input = document.getElementById(inputId);
+    const toggle = document.getElementById(buttonId);
+    const showing = input.type === "password";
+    input.type = showing ? "text" : "password";
+    toggle.textContent = showing ? "Hide" : "Show";
+    toggle.setAttribute("aria-pressed", showing ? "true" : "false");
+    input.focus();
+  });
+}
+
+bindKeyToggle("finnhub-key", "toggle-key");
+bindKeyToggle("twelve-key", "toggle-twelve-key");
 
 document.querySelector("#settings-form").addEventListener("submit", (event) => {
   event.preventDefault();
   const note = document.getElementById("settings-prompt");
   try {
     saveApiKey(document.getElementById("finnhub-key").value);
+    saveTwelveKey(document.getElementById("twelve-key").value);
   } catch {
     note.hidden = false;
     note.textContent = "This browser blocked on-device storage, so the key was not saved.";
@@ -513,6 +526,7 @@ async function runUpdate(trigger) {
     result = await updateQuotes({
       holdings: state.holdings,
       apiKey,
+      twelveKey: loadTwelveKey(),
       online: navigator.onLine !== false,
     });
   } catch (error) {

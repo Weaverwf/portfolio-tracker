@@ -295,13 +295,15 @@ test("the page offers clear example data and a device-only quote update", () => 
   assert.doesNotMatch(app, /Live prices are not available/);
   assert.doesNotMatch(app, /Adding a holding by ticker is not available/);
   assert.doesNotMatch(app, /is not available in this version/);
-  assert.match(sw, /const CACHE = "portfolio-v9"/);
+  assert.match(sw, /const CACHE = "portfolio-v10"/);
   assert.match(sw, /cache:\s*"no-store"/);
   assert.match(sw, /\.\/quotes\.js/);
   const fetchAt = sw.indexOf('addEventListener("fetch"');
   const finnhubAt = sw.indexOf("finnhub.io", fetchAt);
+  const twelveAt = sw.indexOf("twelvedata.com", fetchAt);
   const cacheAt = sw.indexOf("caches.open", fetchAt);
   assert.ok(finnhubAt > fetchAt && finnhubAt < cacheAt);
+  assert.ok(twelveAt > fetchAt && twelveAt < cacheAt);
   assert.equal(existsSync(new URL("../.nojekyll", import.meta.url)), true);
   assert.equal(existsSync(new URL("../portfolio-tracker/index.html", import.meta.url)), false);
   assert.equal(existsSync(new URL("../portfolio-tracker.zip", import.meta.url)), false);

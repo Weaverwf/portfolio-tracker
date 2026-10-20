@@ -7,6 +7,7 @@ import { SAMPLE_HOLDINGS } from "../sample.js";
 import {
   FILTER_KEY,
   FINNHUB_KEY,
+  TWELVE_KEY,
   SCHEMA_VERSION,
   STORAGE_KEY,
   exportFilename,
@@ -334,7 +335,9 @@ test("export is a dated holdings file and leaves the key behind", () => {
   const text = JSON.stringify(record);
   assert.equal(text.includes("test-token"), false);
   assert.equal(text.includes("finnhub"), false);
+  assert.equal(text.includes("twelvedata"), false);
   assert.equal(text.includes(FINNHUB_KEY), false);
+  assert.equal(text.includes(TWELVE_KEY), false);
   assert.equal(exportFilename(new Date(2026, 9, 19, 7, 45)), "portfolio-holdings-2026-10-19.json");
 
   const imported = parseImport(text);
@@ -350,6 +353,7 @@ test("export is a dated holdings file and leaves the key behind", () => {
   const stored = JSON.stringify(toStoredRecord(replaced.state));
   assert.equal(stored.includes("test-token"), false);
   assert.equal(stored.includes(FINNHUB_KEY), false);
+  assert.equal(stored.includes(TWELVE_KEY), false);
   assert.equal(stored.includes(STORAGE_KEY), false);
 });
 

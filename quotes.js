@@ -4,7 +4,9 @@ import { normalizeTicker } from "./storage.js";
 // Free Finnhub plan: 60 calls/minute, and 30 calls/second on every plan.
 // One quote at a time, with a pause, stays well under both.
 export const QUOTE_ENDPOINT = "https://finnhub.io/api/v1/quote";
+export const TWELVE_ENDPOINT = "https://api.twelvedata.com/quote";
 export const REQUEST_GAP_MS = 1200;
+export const TWELVE_GAP_MS = 8000;
 export const OFFLINE_MESSAGE = "No internet; showing last saved prices";
 
 export function uniqueTickers(holdings) {
@@ -28,6 +30,23 @@ export function parseQuote(body) {
     return { ok: false, reason: "zero" };
   }
   return { ok: true, lastPrice: roundCents(last), previousClose: roundCents(previous) };
+}
+
+export function parseTwelveQuote(body) {
+  if (!body || typeof body !== "object") return { ok: false, reason: "bad" };
+  if (body.status === "error") return { ok: false, reason: twelveLimited(body) ? "rate" : "error" };
+  const last = Number(body.close);
+  const previous = Number(body.previous_close);
+  if (!Number.isFinite(last) || !Number.isFinite(previous) || !(last > 0) || !(previous > 0)) {
+    return { ok: false, reason: "zero" };
+  }
+  return { ok: true, lastPrice: roundCents(last), previousClose: roundCents(previous) };
+}
+
+function twelveLimited(body) {
+  if (!body || typeof body !== "object") return false;
+  if (Number(body.code) === 429) return true;
+  return /credit|rate limit|too many requests/i.test(String(body.message || ""));
 }
 
 export function applyQuotes(holdings, byTicker) {
@@ -66,6 +85,28 @@ export function formatUpdatedAt(date) {
   return `Updated ${hours}:${minutes} ${suffix}`;
 }
 
+export async function fetchTwelveQuote(ticker, apiKey, fetchImpl = fetch) {
+  const url = new URL(TWELVE_ENDPOINT);
+  url.searchParams.set("symbol", ticker);
+  url.searchParams.set("apikey", apiKey);
+  let response;
+  try {
+    response = await fetchImpl(url, { method: "GET", cache: "no-store" });
+  } catch {
+    return { ok: false, reason: "network" };
+  }
+  if (response.status === 429) return { ok: false, reason: "rate" };
+  let body;
+  try {
+    body = await response.json();
+  } catch {
+    return { ok: false, reason: "bad" };
+  }
+  if (twelveLimited(body)) return { ok: false, reason: "rate" };
+  if (!response.ok) return { ok: false, reason: "http" };
+  return parseTwelveQuote(body);
+}
+
 export async function fetchQuote(ticker, apiKey, fetchImpl = fetch) {
   const url = new URL(QUOTE_ENDPOINT);
   url.searchParams.set("symbol", ticker);
@@ -88,9 +129,11 @@ export async function fetchQuote(ticker, apiKey, fetchImpl = fetch) {
 export async function updateQuotes({
   holdings,
   apiKey,
+  twelveKey = "",
   fetchImpl = fetch,
   sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
   gapMs = REQUEST_GAP_MS,
+  twelveGapMs = TWELVE_GAP_MS,
   online = true,
 } = {}) {
   const current = holdings || [];
@@ -117,6 +160,22 @@ export async function updateQuotes({
     byTicker[ticker] = await fetchQuote(ticker, apiKey, fetchImpl);
     if (byTicker[ticker].reason === "rate" || byTicker[ticker].reason === "network") stopped = true;
     if (!stopped && i < tickers.length - 1) await sleep(gapMs);
+  }
+
+  const missed = tickers.filter((ticker) => byTicker[ticker]?.ok !== true);
+  const fallbackKey = String(twelveKey || "").trim();
+  if (fallbackKey && missed.length > 0) {
+    let fallbackStopped = false;
+    for (let i = 0; i < missed.length; i += 1) {
+      const ticker = missed[i];
+      if (fallbackStopped) {
+        byTicker[ticker] = { ok: false, reason: "skipped" };
+        continue;
+      }
+      byTicker[ticker] = await fetchTwelveQuote(ticker, fallbackKey, fetchImpl);
+      if (byTicker[ticker].reason === "rate" || byTicker[ticker].reason === "network") fallbackStopped = true;
+      if (!fallbackStopped && i < missed.length - 1) await sleep(twelveGapMs);
+    }
   }
 
   const applied = applyQuotes(current, byTicker);

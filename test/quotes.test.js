@@ -6,15 +6,26 @@ import { presentHolding, presentPortfolio } from "../calc.js";
 import {
   OFFLINE_MESSAGE,
   REQUEST_GAP_MS,
+  TWELVE_GAP_MS,
   applyQuotes,
   formatUpdatedAt,
   parseQuote,
+  parseTwelveQuote,
   uniqueTickers,
   updateQuotes,
   warningFor,
 } from "../quotes.js";
-import { FINNHUB_KEY, STORAGE_KEY, loadApiKey, saveApiKey, saveState, toStoredRecord } from "../storage.js";
-
+import {
+  FINNHUB_KEY,
+  STORAGE_KEY,
+  TWELVE_KEY,
+  loadApiKey,
+  loadTwelveKey,
+  saveApiKey,
+  saveState,
+  saveTwelveKey,
+  toStoredRecord,
+} from "../storage.js";
 const AAPL_IRA = {
   id: "a",
   ticker: "AAPL",
@@ -206,6 +217,103 @@ test("the updated time uses the device clock", () => {
   assert.equal(formatUpdatedAt(new Date(2026, 9, 19, 12, 0)), "Updated 12:00 PM");
 });
 
+test("twelve data fills a ticker finnhub missed and skips cash", async () => {
+  const calls = [];
+  const sleeps = [];
+  const cash = { id: "cash", kind: "cash", portfolio: "IRA", amount: 40, ticker: "SKIP" };
+  const result = await updateQuotes({
+    holdings: [AAPL_IRA, VXUS, { ...MSFT, ticker: "EFA" }, cash],
+    apiKey: "test-token",
+    twelveKey: "twelve-token",
+    gapMs: 0,
+    sleep: async (ms) => {
+      sleeps.push(ms);
+    },
+    fetchImpl: async (url) => {
+      const host = url.hostname;
+      const symbol = url.searchParams.get("symbol");
+      calls.push({ host, symbol, apikey: url.searchParams.get("apikey"), token: url.searchParams.get("token") });
+      if (host.endsWith("twelvedata.com")) {
+        if (symbol === "VXUS") return jsonResponse({ close: "63.25", previous_close: "62.00" });
+        if (symbol === "EFA") return jsonResponse({ close: "80.5", previous_close: "79" });
+        return jsonResponse({ status: "error", code: 400, message: "symbol not found" });
+      }
+      if (symbol === "AAPL") return jsonResponse({ c: 230, pc: 225 });
+      return jsonResponse({ c: 0, pc: 0 });
+    },
+  });
+
+  assert.deepEqual(
+    calls.map((call) => `${call.host}:${call.symbol}`),
+    ["finnhub.io:AAPL", "finnhub.io:VXUS", "finnhub.io:EFA", "api.twelvedata.com:VXUS", "api.twelvedata.com:EFA"],
+  );
+  assert.deepEqual(calls.filter((call) => call.host.endsWith("twelvedata.com")).map((call) => call.apikey), [
+    "twelve-token",
+    "twelve-token",
+  ]);
+  assert.deepEqual(sleeps, [0, 0, TWELVE_GAP_MS]);
+  assert.deepEqual(result.updated, ["AAPL", "VXUS", "EFA"]);
+  assert.deepEqual(result.failed, []);
+  assert.equal(result.message, "");
+  assert.equal(result.holdings.find((row) => row.ticker === "VXUS").lastPrice, 63.25);
+  assert.equal(result.holdings.find((row) => row.ticker === "VXUS").previousClose, 62);
+  assert.equal(result.holdings.find((row) => row.ticker === "EFA").lastPrice, 80.5);
+  assert.equal(result.holdings.find((row) => row.id === "cash").amount, 40);
+  assert.equal(result.holdings.find((row) => row.id === "cash").lastPrice, undefined);
+  assert.equal(parseTwelveQuote({ status: "error", message: "symbol not found" }).reason, "error");
+  assert.equal(parseTwelveQuote({ close: "0", previous_close: "1" }).ok, false);
+});
+
+test("a twelve data error still names the ticker", async () => {
+  const calls = [];
+  const result = await updateQuotes({
+    holdings: [AAPL_IRA, VXUS],
+    apiKey: "test-token",
+    twelveKey: "twelve-token",
+    gapMs: 0,
+    sleep: async () => {},
+    fetchImpl: async (url) => {
+      calls.push(url.hostname);
+      if (url.hostname.endsWith("twelvedata.com")) {
+        return jsonResponse({ status: "error", code: 400, message: "symbol not found" });
+      }
+      if (url.searchParams.get("symbol") === "VXUS") return jsonResponse({ c: 0, pc: 0 });
+      return jsonResponse({ c: 230, pc: 225 });
+    },
+  });
+
+  assert.deepEqual(calls, ["finnhub.io", "finnhub.io", "api.twelvedata.com"]);
+  assert.deepEqual(result.failed, ["VXUS"]);
+  assert.equal(result.message, "These tickers kept their old prices: VXUS.");
+  assert.equal(result.holdings[1].lastPrice, 62.4);
+});
+
+test("a twelve data limit stops later fallback calls", async () => {
+  const calls = [];
+  const result = await updateQuotes({
+    holdings: [VXUS, { ...MSFT, ticker: "EFA" }],
+    apiKey: "test-token",
+    twelveKey: "twelve-token",
+    gapMs: 0,
+    sleep: async () => {},
+    fetchImpl: async (url) => {
+      const symbol = url.searchParams.get("symbol");
+      calls.push(`${url.hostname}:${symbol}`);
+      if (url.hostname.endsWith("twelvedata.com")) {
+        return jsonResponse({ status: "error", code: 429, message: "You have run out of API credits for the current minute." });
+      }
+      return jsonResponse({ c: 0, pc: 0 });
+    },
+  });
+
+  assert.deepEqual(calls, ["finnhub.io:VXUS", "finnhub.io:EFA", "api.twelvedata.com:VXUS"]);
+  assert.deepEqual(result.updated, []);
+  assert.deepEqual(result.failed, ["VXUS", "EFA"]);
+  assert.equal(result.message, "These tickers kept their old prices: VXUS, EFA.");
+  assert.equal(result.holdings[0].lastPrice, 62.4);
+  assert.equal(result.holdings[1].lastPrice, 415.2);
+});
+
 test("quotes do not change a row that was not returned", () => {
   const original = { ...VXUS };
   const applied = applyQuotes([original], { VXUS: { ok: false, reason: "zero" } });
@@ -245,6 +353,15 @@ test("the finnhub key stays out of the holdings record", () => {
     assert.equal(saveApiKey("   "), "");
     assert.equal(store.has(FINNHUB_KEY), false);
     assert.equal(loadApiKey(), "");
+    assert.equal(saveTwelveKey("  twelve-token  "), "twelve-token");
+    assert.equal(loadTwelveKey(), "twelve-token");
+    assert.equal(store.get(TWELVE_KEY), "twelve-token");
+    assert.equal(store.get(TWELVE_KEY) === store.get(FINNHUB_KEY), false);
+    const again = store.get(STORAGE_KEY);
+    assert.equal(again.includes("twelve-token"), false);
+    assert.equal(again.includes(TWELVE_KEY), false);
+    assert.equal(saveTwelveKey(""), "");
+    assert.equal(store.has(TWELVE_KEY), false);
   } finally {
     if (previous === undefined) delete globalThis.localStorage;
     else globalThis.localStorage = previous;
@@ -256,6 +373,7 @@ test("the project does not contain a finnhub token", () => {
   const skip = new Set(["node_modules", ".git", "icons"]);
   const secret = /(?:token|api[_-]?key)\s*[:=]\s*["'][A-Za-z0-9]{20,}["']/i;
   const embedded = /finnhub\.io\/api\/[^"'\s]*token=[A-Za-z0-9]{8,}/i;
+  const embeddedTwelve = /twelvedata\.com\/[^"'\s]*apikey=[A-Za-z0-9]{8,}/i;
   const files = [];
   const walk = (dir) => {
     for (const name of readdirSync(dir)) {
@@ -271,5 +389,6 @@ test("the project does not contain a finnhub token", () => {
     const text = readFileSync(path, "utf8");
     assert.equal(secret.test(text), false, path);
     assert.equal(embedded.test(text), false, path);
+    assert.equal(embeddedTwelve.test(text), false, path);
   }
 });

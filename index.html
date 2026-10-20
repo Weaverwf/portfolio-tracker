@@ -247,7 +247,7 @@
     <dialog id="settings-dialog" aria-labelledby="settings-title">
       <form id="settings-form" novalidate>
         <h2 id="settings-title">Settings</h2>
-        <p>The Finnhub key stays on this device. It is used only when you tap Update.</p>
+        <p>Quote keys stay on this device. They are used only when you tap Update. Twelve Data is optional, and it is used when Finnhub has no price.</p>
         <p id="settings-prompt" class="form-note" hidden></p>
         <div class="field">
           <label for="finnhub-key"><span class="label">Finnhub key</span></label>
@@ -263,6 +263,22 @@
               enterkeyhint="done"
             />
             <button type="button" class="button button-ghost" id="toggle-key">Show</button>
+          </div>
+        </div>
+        <div class="field">
+          <label for="twelve-key"><span class="label">Twelve Data key <span class="sub">optional</span></span></label>
+          <div class="key-row">
+            <input
+              id="twelve-key"
+              name="twelveKey"
+              type="password"
+              autocomplete="off"
+              autocapitalize="off"
+              autocorrect="off"
+              spellcheck="false"
+              enterkeyhint="done"
+            />
+            <button type="button" class="button button-ghost" id="toggle-twelve-key">Show</button>
           </div>
         </div>
         <div class="form-actions">

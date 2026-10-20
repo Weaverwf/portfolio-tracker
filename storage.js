@@ -3,6 +3,7 @@ import { SAMPLE_HOLDINGS } from "./sample.js";
 
 export const STORAGE_KEY = "portfolio-tracker.v1";
 export const FINNHUB_KEY = "portfolio-tracker.finnhub";
+export const TWELVE_KEY = "portfolio-tracker.twelvedata";
 export const FILTER_KEY = "portfolio-tracker.view";
 export const SCHEMA_VERSION = 2;
 export const EXPORT_VERSION = 2;
@@ -345,6 +346,21 @@ export function saveApiKey(value) {
   const trimmed = String(value ?? "").trim();
   if (!trimmed) localStorage.removeItem(FINNHUB_KEY);
   else localStorage.setItem(FINNHUB_KEY, trimmed);
+  return trimmed;
+}
+
+export function loadTwelveKey() {
+  try {
+    return localStorage.getItem(TWELVE_KEY) || "";
+  } catch {
+    return "";
+  }
+}
+
+export function saveTwelveKey(value) {
+  const trimmed = String(value ?? "").trim();
+  if (!trimmed) localStorage.removeItem(TWELVE_KEY);
+  else localStorage.setItem(TWELVE_KEY, trimmed);
   return trimmed;
 }
 
