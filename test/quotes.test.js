@@ -5,11 +5,12 @@ import test from "node:test";
 import { presentHolding, presentPortfolio } from "../calc.js";
 import {
   OFFLINE_MESSAGE,
-  REQUEST_GAP_MS,
-  TWELVE_GAP_MS,
+  RATE_RETRY_MS,
+  TWELVE_BATCH_SIZE,
   applyQuotes,
   formatUpdatedAt,
   parseQuote,
+  parseTwelveBatch,
   parseTwelveQuote,
   uniqueTickers,
   updateQuotes,
@@ -78,7 +79,6 @@ test("one quote updates every row with that ticker", async () => {
   const result = await updateQuotes({
     holdings,
     apiKey: "test-token",
-    gapMs: REQUEST_GAP_MS,
     sleep: async (ms) => {
       sleeps.push(ms);
     },
@@ -101,7 +101,7 @@ test("one quote updates every row with that ticker", async () => {
     assert.equal(call.init.cache, "no-store");
     assert.equal(String(call.init.url || ""), "");
   }
-  assert.deepEqual(sleeps, [REQUEST_GAP_MS]);
+  assert.deepEqual(sleeps, []);
   assert.equal(result.ok, true);
   assert.equal(result.message, "");
   assert.equal(holdings[0].lastPrice, 228.5);
@@ -148,12 +148,16 @@ test("a zero quote keeps the old price and is listed", async () => {
   assert.equal(warningFor([]), "");
 });
 
-test("a rate limit stops later quotes and lists them", async () => {
+test("a rate limit retries only those tickers", async () => {
   const calls = [];
+  const sleeps = [];
   const result = await updateQuotes({
     holdings: [AAPL_IRA, MSFT, VXUS],
     apiKey: "test-token",
-    sleep: async () => {},
+    retryMs: 25,
+    sleep: async (ms) => {
+      sleeps.push(ms);
+    },
     fetchImpl: async (url) => {
       const symbol = url.searchParams.get("symbol");
       calls.push(symbol);
@@ -162,12 +166,32 @@ test("a rate limit stops later quotes and lists them", async () => {
     },
   });
 
-  assert.deepEqual(calls, ["AAPL", "MSFT"]);
-  assert.deepEqual(result.updated, ["AAPL"]);
-  assert.deepEqual(result.failed, ["MSFT", "VXUS"]);
+  assert.deepEqual(calls, ["AAPL", "MSFT", "VXUS", "MSFT"]);
+  assert.deepEqual(sleeps, [25]);
+  assert.deepEqual(result.updated, ["AAPL", "VXUS"]);
+  assert.deepEqual(result.failed, ["MSFT"]);
   assert.equal(result.holdings[1].lastPrice, 415.2);
-  assert.equal(result.holdings[2].lastPrice, 62.4);
-  assert.equal(result.message, "These tickers kept their old prices: MSFT, VXUS.");
+  assert.equal(result.holdings[2].lastPrice, 230);
+  assert.equal(result.message, "These tickers kept their old prices: MSFT.");
+});
+
+test("a retried ticker can still update", async () => {
+  const seen = [];
+  const result = await updateQuotes({
+    holdings: [MSFT],
+    apiKey: "test-token",
+    retryMs: 1,
+    sleep: async () => {},
+    fetchImpl: async () => {
+      seen.push("call");
+      if (seen.length === 1) return jsonResponse({}, 429);
+      return jsonResponse({ c: 410, pc: 420 });
+    },
+  });
+  assert.deepEqual(seen, ["call", "call"]);
+  assert.deepEqual(result.updated, ["MSFT"]);
+  assert.equal(result.holdings[0].lastPrice, 410);
+  assert.equal(result.message, "");
 });
 
 test("a network error while online lists the tickers and does not claim offline", async () => {
@@ -183,7 +207,7 @@ test("a network error while online lists the tickers and does not claim offline"
     },
   });
 
-  assert.deepEqual(calls, ["sent"]);
+  assert.deepEqual(calls, ["sent", "sent"]);
   assert.equal(result.reason, "partial");
   assert.equal(result.message.includes(OFFLINE_MESSAGE), false);
   assert.equal(result.message, "These tickers kept their old prices: AAPL, MSFT.");
@@ -234,9 +258,10 @@ test("twelve data fills a ticker finnhub missed and skips cash", async () => {
       const symbol = url.searchParams.get("symbol");
       calls.push({ host, symbol, apikey: url.searchParams.get("apikey"), token: url.searchParams.get("token") });
       if (host.endsWith("twelvedata.com")) {
-        if (symbol === "VXUS") return jsonResponse({ close: "63.25", previous_close: "62.00" });
-        if (symbol === "EFA") return jsonResponse({ close: "80.5", previous_close: "79" });
-        return jsonResponse({ status: "error", code: 400, message: "symbol not found" });
+        return jsonResponse({
+          VXUS: { close: "63.25", previous_close: "62.00" },
+          EFA: { close: "80.5", previous_close: "79" },
+        });
       }
       if (symbol === "AAPL") return jsonResponse({ c: 230, pc: 225 });
       return jsonResponse({ c: 0, pc: 0 });
@@ -245,13 +270,13 @@ test("twelve data fills a ticker finnhub missed and skips cash", async () => {
 
   assert.deepEqual(
     calls.map((call) => `${call.host}:${call.symbol}`),
-    ["finnhub.io:AAPL", "finnhub.io:VXUS", "finnhub.io:EFA", "api.twelvedata.com:VXUS", "api.twelvedata.com:EFA"],
+    ["finnhub.io:AAPL", "finnhub.io:VXUS", "finnhub.io:EFA", "api.twelvedata.com:VXUS,EFA"],
   );
-  assert.deepEqual(calls.filter((call) => call.host.endsWith("twelvedata.com")).map((call) => call.apikey), [
-    "twelve-token",
-    "twelve-token",
-  ]);
-  assert.deepEqual(sleeps, [0, 0, TWELVE_GAP_MS]);
+  assert.deepEqual(
+    calls.filter((call) => call.host.endsWith("twelvedata.com")).map((call) => call.apikey),
+    ["twelve-token"],
+  );
+  assert.deepEqual(sleeps, []);
   assert.deepEqual(result.updated, ["AAPL", "VXUS", "EFA"]);
   assert.deepEqual(result.failed, []);
   assert.equal(result.message, "");
@@ -306,12 +331,98 @@ test("a twelve data limit stops later fallback calls", async () => {
     },
   });
 
-  assert.deepEqual(calls, ["finnhub.io:VXUS", "finnhub.io:EFA", "api.twelvedata.com:VXUS"]);
+  assert.deepEqual(calls, ["finnhub.io:VXUS", "finnhub.io:EFA", "api.twelvedata.com:VXUS,EFA"]);
   assert.deepEqual(result.updated, []);
   assert.deepEqual(result.failed, ["VXUS", "EFA"]);
   assert.equal(result.message, "These tickers kept their old prices: VXUS, EFA.");
   assert.equal(result.holdings[0].lastPrice, 62.4);
   assert.equal(result.holdings[1].lastPrice, 415.2);
+});
+
+test("twelve data batches eight symbols and leaves the rest when limited", async () => {
+  const symbols = ["AA", "AB", "AC", "AD", "AE", "AF", "AG", "AH", "AI"];
+  const calls = [];
+  const result = await updateQuotes({
+    holdings: symbols.map((ticker, index) => ({
+      id: ticker,
+      ticker,
+      portfolio: index % 2 === 0 ? "IRA" : "Roth IRA",
+      shares: 1,
+      costBasis: 1,
+      lastPrice: 1,
+      previousClose: 1,
+    })),
+    apiKey: "test-token",
+    twelveKey: "twelve-token",
+    sleep: async () => {},
+    fetchImpl: async (url) => {
+      const symbol = url.searchParams.get("symbol");
+      calls.push(`${url.hostname}:${symbol}`);
+      if (url.hostname.endsWith("twelvedata.com")) {
+        return jsonResponse({ code: 429, status: "error", message: "You have run out of API credits for the current minute." });
+      }
+      return jsonResponse({ c: 0, pc: 0 });
+    },
+  });
+
+  assert.equal(TWELVE_BATCH_SIZE, 8);
+  assert.deepEqual(
+    calls.filter((call) => call.startsWith("api.twelvedata.com")),
+    [`api.twelvedata.com:${symbols.slice(0, 8).join(",")}`],
+  );
+  assert.deepEqual(result.failed, symbols);
+  assert.equal(result.message, `These tickers kept their old prices: ${symbols.join(", ")}.`);
+  assert.equal(parseTwelveBatch({ close: "3", previous_close: "2" }, ["AA"]).AA.lastPrice, 3);
+  assert.equal(parseTwelveBatch({ AA: { status: "error", message: "symbol not found" }, AB: { close: "4", previous_close: "3" } }, ["AA", "AB"]).AB.lastPrice, 4);
+  assert.equal(parseTwelveBatch({ AA: { status: "error", message: "symbol not found" }, AB: { close: "4", previous_close: "3" } }, ["AA", "AB"]).AA.ok, false);
+});
+
+test("quotes finish together instead of waiting between tickers", async () => {
+  const latency = 40;
+  const count = 36;
+  const holdings = Array.from({ length: count }, (_, index) => ({
+    id: `n${index}`,
+    ticker: `T${index}`,
+    portfolio: "IRA",
+    shares: 1,
+    costBasis: 1,
+    lastPrice: 1,
+    previousClose: 1,
+  }));
+  holdings.push({ ...holdings[0], id: "dup", portfolio: "Roth IRA" });
+  const slow = () =>
+    new Promise((resolve) => {
+      setTimeout(() => resolve(jsonResponse({ c: 2, pc: 1 })), latency);
+    });
+  let calls = 0;
+  const started = performance.now();
+  const result = await updateQuotes({
+    holdings,
+    apiKey: "test-token",
+    fetchImpl: async () => {
+      calls += 1;
+      return slow();
+    },
+  });
+  const after = performance.now() - started;
+  const before = (count - 1) * 1200 + count * latency;
+  assert.equal(calls, count);
+  assert.equal(result.updated.length, count);
+  assert.ok(after < 1000, `measured ${Math.round(after)}ms`);
+  assert.ok(after < before / 20, `after ${Math.round(after)} before ${before}`);
+  console.log(`timing tickers=${count} latency=${latency} before=${before} after=${Math.round(after)}`);
+
+  const sample = 6;
+  const oldStarted = performance.now();
+  for (let index = 0; index < sample; index += 1) {
+    await slow();
+    if (index < sample - 1) await new Promise((resolve) => setTimeout(resolve, 1200));
+  }
+  const oldSample = performance.now() - oldStarted;
+  const oldExpected = (sample - 1) * 1200 + sample * latency;
+  assert.ok(Math.abs(oldSample - oldExpected) < 400, `old sample ${Math.round(oldSample)}`);
+  console.log(`timing sample=${sample} old=${Math.round(oldSample)} expected=${oldExpected}`);
+  assert.equal(RATE_RETRY_MS, 1000);
 });
 
 test("quotes do not change a row that was not returned", () => {

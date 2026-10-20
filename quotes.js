@@ -1,12 +1,13 @@
 import { isCashHolding, roundCents } from "./calc.js";
 import { normalizeTicker } from "./storage.js";
 
-// Free Finnhub plan: 60 calls/minute, and 30 calls/second on every plan.
-// One quote at a time, with a pause, stays well under both.
+// Free Finnhub plan: 60 calls a minute, and 30 calls a second. Unique tickers go out together.
+// A 429 is tried once more after a short wait. Other results are left as they are.
+// Twelve Data free plan: 8 credits a minute and 800 a day. One request asks for up to 8 symbols.
 export const QUOTE_ENDPOINT = "https://finnhub.io/api/v1/quote";
 export const TWELVE_ENDPOINT = "https://api.twelvedata.com/quote";
-export const REQUEST_GAP_MS = 1200;
-export const TWELVE_GAP_MS = 8000;
+export const RATE_RETRY_MS = 1000;
+export const TWELVE_BATCH_SIZE = 8;
 export const OFFLINE_MESSAGE = "No internet; showing last saved prices";
 
 export function uniqueTickers(holdings) {
@@ -85,26 +86,46 @@ export function formatUpdatedAt(date) {
   return `Updated ${hours}:${minutes} ${suffix}`;
 }
 
-export async function fetchTwelveQuote(ticker, apiKey, fetchImpl = fetch) {
+function chunksOf(list, size) {
+  const chunks = [];
+  for (let i = 0; i < list.length; i += size) chunks.push(list.slice(i, i + size));
+  return chunks;
+}
+
+function quotesFor(symbols, reason) {
+  return Object.fromEntries(symbols.map((symbol) => [symbol, { ok: false, reason }]));
+}
+
+export function parseTwelveBatch(body, symbols) {
+  const list = symbols.slice();
+  if (!body || typeof body !== "object") return quotesFor(list, "bad");
+  if (list.length === 1) return { [list[0]]: parseTwelveQuote(body) };
+  if (body.status === "error" || twelveLimited(body)) return quotesFor(list, twelveLimited(body) ? "rate" : "error");
+  const quotes = {};
+  for (const symbol of list) quotes[symbol] = parseTwelveQuote(body[symbol]);
+  return quotes;
+}
+
+async function fetchTwelveBatch(symbols, apiKey, fetchImpl) {
   const url = new URL(TWELVE_ENDPOINT);
-  url.searchParams.set("symbol", ticker);
+  url.searchParams.set("symbol", symbols.join(","));
   url.searchParams.set("apikey", apiKey);
   let response;
   try {
     response = await fetchImpl(url, { method: "GET", cache: "no-store" });
   } catch {
-    return { ok: false, reason: "network" };
+    return { stopped: true, quotes: quotesFor(symbols, "network") };
   }
-  if (response.status === 429) return { ok: false, reason: "rate" };
+  if (response.status === 429) return { stopped: true, quotes: quotesFor(symbols, "rate") };
   let body;
   try {
     body = await response.json();
   } catch {
-    return { ok: false, reason: "bad" };
+    return { stopped: false, quotes: quotesFor(symbols, "bad") };
   }
-  if (twelveLimited(body)) return { ok: false, reason: "rate" };
-  if (!response.ok) return { ok: false, reason: "http" };
-  return parseTwelveQuote(body);
+  if (twelveLimited(body)) return { stopped: true, quotes: quotesFor(symbols, "rate") };
+  if (!response.ok) return { stopped: false, quotes: quotesFor(symbols, "http") };
+  return { stopped: false, quotes: parseTwelveBatch(body, symbols) };
 }
 
 export async function fetchQuote(ticker, apiKey, fetchImpl = fetch) {
@@ -132,8 +153,7 @@ export async function updateQuotes({
   twelveKey = "",
   fetchImpl = fetch,
   sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
-  gapMs = REQUEST_GAP_MS,
-  twelveGapMs = TWELVE_GAP_MS,
+  retryMs = RATE_RETRY_MS,
   online = true,
 } = {}) {
   const current = holdings || [];
@@ -150,31 +170,32 @@ export async function updateQuotes({
 
   const tickers = uniqueTickers(current);
   const byTicker = {};
-  let stopped = false;
-  for (let i = 0; i < tickers.length; i += 1) {
-    const ticker = tickers[i];
-    if (stopped) {
-      byTicker[ticker] = { ok: false, reason: "skipped" };
-      continue;
-    }
-    byTicker[ticker] = await fetchQuote(ticker, apiKey, fetchImpl);
-    if (byTicker[ticker].reason === "rate" || byTicker[ticker].reason === "network") stopped = true;
-    if (!stopped && i < tickers.length - 1) await sleep(gapMs);
+  const first = await Promise.all(tickers.map((ticker) => fetchQuote(ticker, apiKey, fetchImpl)));
+  const retry = [];
+  tickers.forEach((ticker, index) => {
+    if (first[index].reason === "rate") retry.push(ticker);
+    else byTicker[ticker] = first[index];
+  });
+  if (retry.length > 0) {
+    await sleep(retryMs);
+    const second = await Promise.all(retry.map((ticker) => fetchQuote(ticker, apiKey, fetchImpl)));
+    retry.forEach((ticker, index) => {
+      byTicker[ticker] = second[index];
+    });
   }
 
   const missed = tickers.filter((ticker) => byTicker[ticker]?.ok !== true);
   const fallbackKey = String(twelveKey || "").trim();
   if (fallbackKey && missed.length > 0) {
-    let fallbackStopped = false;
-    for (let i = 0; i < missed.length; i += 1) {
-      const ticker = missed[i];
-      if (fallbackStopped) {
-        byTicker[ticker] = { ok: false, reason: "skipped" };
+    let stopped = false;
+    for (const group of chunksOf(missed, TWELVE_BATCH_SIZE)) {
+      if (stopped) {
+        for (const ticker of group) byTicker[ticker] = { ok: false, reason: "skipped" };
         continue;
       }
-      byTicker[ticker] = await fetchTwelveQuote(ticker, fallbackKey, fetchImpl);
-      if (byTicker[ticker].reason === "rate" || byTicker[ticker].reason === "network") fallbackStopped = true;
-      if (!fallbackStopped && i < missed.length - 1) await sleep(twelveGapMs);
+      const batch = await fetchTwelveBatch(group, fallbackKey, fetchImpl);
+      Object.assign(byTicker, batch.quotes);
+      if (batch.stopped) stopped = true;
     }
   }
 
