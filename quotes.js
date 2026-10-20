@@ -1,4 +1,4 @@
-import { roundCents } from "./calc.js";
+import { isCashHolding, roundCents } from "./calc.js";
 import { normalizeTicker } from "./storage.js";
 
 // Free Finnhub plan: 60 calls/minute, and 30 calls/second on every plan.
@@ -11,6 +11,7 @@ export function uniqueTickers(holdings) {
   const seen = new Set();
   const list = [];
   for (const row of holdings || []) {
+    if (isCashHolding(row)) continue;
     const ticker = normalizeTicker(row?.ticker);
     if (!ticker || seen.has(ticker)) continue;
     seen.add(ticker);
@@ -41,6 +42,7 @@ export function applyQuotes(holdings, byTicker) {
     }
     updated.push(ticker);
     for (const row of next) {
+      if (isCashHolding(row)) continue;
       if (normalizeTicker(row.ticker) === ticker) {
         row.lastPrice = quote.lastPrice;
         row.previousClose = quote.previousClose;

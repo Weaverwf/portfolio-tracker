@@ -165,7 +165,14 @@
           The ticker is 1 to 5 letters. A period or a hyphen is allowed. Leave a price blank and the table shows a dash.
         </p>
         <p id="edit-intro" hidden>The ticker stays as saved. Change the other fields, then save.</p>
-        <div class="field">
+        <div class="field" id="add-kind">
+          <span class="label">What to add</span>
+          <div class="kind-choice" role="group" aria-label="What to add">
+            <button type="button" class="button" id="kind-holding" aria-pressed="true">Holding</button>
+            <button type="button" class="button" id="kind-cash" aria-pressed="false">Cash</button>
+          </div>
+        </div>
+        <div class="field" id="field-ticker">
           <label for="add-ticker"><span class="label">Ticker <span class="sub" id="ticker-lock-note" hidden>stays as saved</span></span></label>
           <input
             id="add-ticker"
@@ -194,19 +201,23 @@
           <datalist id="portfolio-names"></datalist>
           <div id="portfolio-suggestions" class="suggestions" role="group" aria-label="Existing portfolios" hidden></div>
         </div>
-        <div class="field">
+        <div class="field" id="field-amount" hidden>
+          <label for="add-amount"><span class="label">Amount ($)</span></label>
+          <input id="add-amount" name="amount" type="text" inputmode="decimal" autocomplete="off" enterkeyhint="done" />
+        </div>
+        <div class="field" id="field-shares">
           <label for="add-shares"><span class="label">Shares</span></label>
           <input id="add-shares" name="shares" type="text" inputmode="decimal" autocomplete="off" enterkeyhint="next" />
         </div>
-        <div class="field">
+        <div class="field" id="field-cost">
           <label for="add-cost"><span class="label">Cost basis per share ($)</span></label>
           <input id="add-cost" name="costBasis" type="text" inputmode="decimal" autocomplete="off" enterkeyhint="next" />
         </div>
-        <div class="field">
+        <div class="field" id="field-last">
           <label for="add-last"><span class="label">Last price <span class="sub">optional</span></span></label>
           <input id="add-last" name="lastPrice" type="text" inputmode="decimal" autocomplete="off" enterkeyhint="next" />
         </div>
-        <div class="field">
+        <div class="field" id="field-prev">
           <label for="add-prev"><span class="label">Previous close <span class="sub">optional</span></span></label>
           <input
             id="add-prev"

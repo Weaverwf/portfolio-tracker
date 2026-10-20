@@ -634,6 +634,22 @@ dialog .button {
   margin-top: 18px;
 }
 
+.kind-choice {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+dialog .kind-choice .button {
+  margin-top: 0;
+}
+
+.kind-choice .button[aria-pressed="false"] {
+  background: var(--card);
+  color: var(--pine-deep);
+  border-color: var(--pine);
+}
+
 dialog.fallback[open] {
   position: fixed;
   z-index: 10;

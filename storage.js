@@ -1,4 +1,4 @@
-import { presentPortfolio, roundCents } from "./calc.js";
+import { isCashHolding, presentPortfolio, roundCents } from "./calc.js";
 import { SAMPLE_HOLDINGS } from "./sample.js";
 
 export const STORAGE_KEY = "portfolio-tracker.v1";
@@ -16,6 +16,7 @@ export const MESSAGES = {
   cost: "Enter a cost basis per share of zero or more.",
   lastPrice: "Enter a last price of zero or more, or leave it blank.",
   previousClose: "Enter a previous close of zero or more, or leave it blank.",
+  amount: "Enter a cash amount of zero or more.",
   unreadable: "Holdings saved on this device could not be read. They were left untouched.",
   noExample: "There is no example data to clear.",
   missing: "That holding is not on this device.",
@@ -79,13 +80,22 @@ export function portfolioNames(holdings) {
   return names;
 }
 
-export function findDuplicate(holdings, ticker, portfolio) {
+export function findDuplicate(holdings, ticker, portfolio, kind) {
   const symbol = normalizeTicker(ticker);
   const name = normalizePortfolio(portfolio).toLowerCase();
+  const wantCash = kind === "cash";
   return (holdings || []).find((row) => {
     if (!row) return false;
-    return normalizeTicker(row.ticker) === symbol && normalizePortfolio(row.portfolio).toLowerCase() === name;
+    if (normalizePortfolio(row.portfolio).toLowerCase() !== name) return false;
+    if (wantCash) return isCashHolding(row);
+    if (isCashHolding(row)) return false;
+    return normalizeTicker(row.ticker) === symbol;
   });
+}
+
+function duplicateMessage(holding, duplicate) {
+  const label = isCashHolding(holding) ? "Cash" : holding.ticker;
+  return `${label} is already in ${duplicate.portfolio}.`;
 }
 
 function parseLooseNumber(raw) {
@@ -109,8 +119,29 @@ function roundShares(n) {
   return Math.round(n * 10000) / 10000;
 }
 
+function buildCashHolding(source) {
+  const portfolio = normalizePortfolio(source.portfolio);
+  if (!portfolio) return { ok: false, field: "portfolio", message: MESSAGES.portfolio };
+  if (portfolio.length > PORTFOLIO_MAX) {
+    return { ok: false, field: "portfolio", message: MESSAGES.portfolioLong };
+  }
+  const amount = parseLooseNumber(source.amount);
+  if (!amount.ok || amount.value === null || amount.value < 0) {
+    return { ok: false, field: "amount", message: MESSAGES.amount };
+  }
+  return {
+    ok: true,
+    holding: {
+      kind: "cash",
+      portfolio,
+      amount: roundCents(amount.value),
+    },
+  };
+}
+
 export function buildHolding(input) {
   const source = input || {};
+  if (source.kind === "cash") return buildCashHolding(source);
   const ticker = normalizeTicker(source.ticker);
   if (!isValidTicker(ticker)) return { ok: false, field: "ticker", message: MESSAGES.ticker };
 
@@ -166,12 +197,12 @@ export function addHolding(state, input, options = {}) {
   if (!built.ok) return built;
 
   const existing = state.isExample ? [] : state.holdings || [];
-  const duplicate = findDuplicate(existing, built.holding.ticker, built.holding.portfolio);
+  const duplicate = findDuplicate(existing, built.holding.ticker, built.holding.portfolio, built.holding.kind);
   if (duplicate) {
     return {
       ok: false,
       field: "portfolio",
-      message: `${built.holding.ticker} is already in ${duplicate.portfolio}.`,
+      message: duplicateMessage(built.holding, duplicate),
     };
   }
 
@@ -209,19 +240,22 @@ export function updateHolding(state, id, input) {
   if (index < 0) return { ok: false, message: MESSAGES.missing };
 
   const current = holdings[index];
-  const built = buildHolding({ ...input, ticker: current.ticker });
+  const built = isCashHolding(current)
+    ? buildHolding({ kind: "cash", portfolio: input?.portfolio, amount: input?.amount })
+    : buildHolding({ ...input, ticker: current.ticker, kind: undefined });
   if (!built.ok) return built;
 
   const duplicate = findDuplicate(
     holdings.filter((row) => row && row.id !== id),
     built.holding.ticker,
     built.holding.portfolio,
+    built.holding.kind,
   );
   if (duplicate) {
     return {
       ok: false,
       field: "portfolio",
-      message: `${built.holding.ticker} is already in ${duplicate.portfolio}.`,
+      message: duplicateMessage(built.holding, duplicate),
     };
   }
 
@@ -329,7 +363,7 @@ export function saveFilter(name) {
   return trimmed && trimmed.toLowerCase() !== "all" ? trimmed : "";
 }
 
-const EXPORT_FIELDS = ["id", "ticker", "portfolio", "shares", "costBasis", "lastPrice", "previousClose"];
+const EXPORT_FIELDS = ["id", "kind", "ticker", "portfolio", "shares", "costBasis", "lastPrice", "previousClose", "amount"];
 
 export function toExportRecord(state) {
   const record = {
@@ -379,9 +413,9 @@ export function parseImport(raw) {
       const who = ticker ? `${ticker} could not be read. ` : "A row could not be read. ";
       return { ok: false, message: `${who}${built.message}` };
     }
-    const duplicate = findDuplicate(holdings, built.holding.ticker, built.holding.portfolio);
+    const duplicate = findDuplicate(holdings, built.holding.ticker, built.holding.portfolio, built.holding.kind);
     if (duplicate) {
-      return { ok: false, message: `${built.holding.ticker} is already in ${duplicate.portfolio}.` };
+      return { ok: false, message: duplicateMessage(built.holding, duplicate) };
     }
     let id = typeof row?.id === "string" ? row.id.trim() : "";
     if (!id || seenIds.has(id)) id = createId();

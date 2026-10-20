@@ -35,10 +35,22 @@ function isMissing(value) {
   return false;
 }
 
+export function isCashHolding(holding) {
+  return holding?.kind === "cash";
+}
+
+export function holdingLabel(holding) {
+  return isCashHolding(holding) ? "Cash" : holding?.ticker || "";
+}
+
 export function isCompleteHolding(holding) {
   if (!holding || typeof holding !== "object") return false;
-  if (typeof holding.ticker !== "string" || holding.ticker.trim() === "") return false;
   if (typeof holding.portfolio !== "string" || holding.portfolio.trim() === "") return false;
+  if (isCashHolding(holding)) {
+    const amount = Number(holding.amount);
+    return Number.isFinite(amount) && amount >= 0;
+  }
+  if (typeof holding.ticker !== "string" || holding.ticker.trim() === "") return false;
   if (!Number.isFinite(Number(holding.shares)) || !Number.isFinite(Number(holding.costBasis))) return false;
   if (!isMissing(holding.lastPrice) && !Number.isFinite(Number(holding.lastPrice))) return false;
   if (!isMissing(holding.previousClose) && !Number.isFinite(Number(holding.previousClose))) return false;
@@ -122,6 +134,26 @@ function blankMetrics(sharesText, costBasisText) {
 }
 
 export function presentHolding(holding) {
+  if (isCashHolding(holding)) {
+    const totalValue = roundCents(readNumber(holding.amount, "amount"));
+    return {
+      totalValue,
+      todayDollar: 0,
+      todayPercent: null,
+      lifeDollar: 0,
+      lifePercent: null,
+      sharesText: EMPTY_MARK,
+      costBasisText: EMPTY_MARK,
+      todayPercentText: EMPTY_MARK,
+      todayDollarText: EMPTY_MARK,
+      lifePercentText: EMPTY_MARK,
+      lifeDollarText: EMPTY_MARK,
+      totalValueText: formatMoney(totalValue),
+      todaySign: "flat",
+      lifeSign: "flat",
+    };
+  }
+
   const sharesText = formatShares(holding.shares);
   const costBasisText = formatMoney(holding.costBasis);
   const last = optionalNumber(holding.lastPrice);
@@ -168,6 +200,27 @@ export function presentHolding(holding) {
   };
 }
 
+function figureText(dollar, percent, base) {
+  if (dollar == null || (dollar === 0 && !(Number(base) > 0))) {
+    return { text: EMPTY_MARK, dollarText: EMPTY_MARK, sign: "flat" };
+  }
+  return {
+    text: formatPercent(percent),
+    dollarText: formatMoney(dollar, { signed: true }),
+    sign: signOf(dollar),
+  };
+}
+
+function positionCost(holding) {
+  if (isCashHolding(holding)) return 0;
+  return totalCost(holding.shares, holding.costBasis);
+}
+
+function positionPrevious(holding) {
+  if (isCashHolding(holding)) return 0;
+  return roundCents(Number(holding.shares) * Number(holding.previousClose));
+}
+
 function sumCents(values) {
   const cents = values.reduce((sum, value) => sum + Math.round(value * 100), 0);
   return cents / 100;
@@ -177,7 +230,7 @@ export function sortRows(rows, key, direction) {
   if (!key) return rows.slice();
   const factor = direction === "desc" ? -1 : 1;
   const amount = (row) => {
-    if (key === "ticker") return row.holding?.ticker || "";
+    if (key === "ticker") return holdingLabel(row.holding);
     if (key === "total") return row.totalValue;
     if (key === "today") return row.todayPercent;
     if (key === "life") return row.lifePercent;
@@ -197,8 +250,21 @@ export function sortRows(rows, key, direction) {
     } else if (av !== bv) {
       return (av < bv ? -1 : 1) * factor;
     }
-    return String(a.holding?.ticker || "").localeCompare(String(b.holding?.ticker || ""));
+    return holdingLabel(a.holding).localeCompare(holdingLabel(b.holding));
   });
+}
+
+function signedFigures(todayDollar, todayPercent, previousValue, lifeDollar, lifePercent, costBasis) {
+  const today = figureText(todayDollar, todayPercent, previousValue);
+  const life = figureText(lifeDollar, lifePercent, costBasis);
+  return {
+    todayPercentText: today.text,
+    todayDollarText: today.dollarText,
+    lifePercentText: life.text,
+    lifeDollarText: life.dollarText,
+    todaySign: today.sign,
+    lifeSign: life.sign,
+  };
 }
 
 // The header is the sum of these portfolio subtotals. It does not walk rendered rows.
@@ -227,12 +293,7 @@ export function presentHeader(subtotals) {
     todayPercent,
     lifePercent,
     totalValueText: totalValue == null ? EMPTY_MARK : formatMoney(totalValue),
-    todayPercentText: todayDollar == null ? EMPTY_MARK : formatPercent(todayPercent),
-    todayDollarText: todayDollar == null ? EMPTY_MARK : formatMoney(todayDollar, { signed: true }),
-    lifePercentText: lifeDollar == null ? EMPTY_MARK : formatPercent(lifePercent),
-    lifeDollarText: lifeDollar == null ? EMPTY_MARK : formatMoney(lifeDollar, { signed: true }),
-    todaySign: todayDollar == null ? "flat" : signOf(todayDollar),
-    lifeSign: lifeDollar == null ? "flat" : signOf(lifeDollar),
+    ...signedFigures(todayDollar, todayPercent, previousValue, lifeDollar, lifePercent, costBasis),
   };
 }
 
@@ -247,17 +308,11 @@ export function presentPortfolio(holdings) {
 
   const totalValue = allValued ? sumCents(rows.map((row) => row.totalValue)) : null;
   const lifeDollar = allValued ? sumCents(rows.map((row) => row.lifeDollar)) : null;
-  const costBasis = allValued
-    ? sumCents(rows.map((row) => totalCost(row.holding.shares, row.holding.costBasis)))
-    : null;
+  const costBasis = allValued ? sumCents(rows.map((row) => positionCost(row.holding))) : null;
   const lifePercent = !allValued || costBasis === 0 ? null : lifeDollar / costBasis;
 
   const todayDollar = allMoved ? sumCents(rows.map((row) => row.todayDollar)) : null;
-  const previousValue = allMoved
-    ? sumCents(
-        rows.map((row) => roundCents(Number(row.holding.shares) * Number(row.holding.previousClose))),
-      )
-    : null;
+  const previousValue = allMoved ? sumCents(rows.map((row) => positionPrevious(row.holding))) : null;
   const todayPercent = !allMoved || previousValue === 0 ? null : todayDollar / previousValue;
 
   return {
@@ -270,11 +325,6 @@ export function presentPortfolio(holdings) {
     todayPercent,
     lifePercent,
     totalValueText: totalValue == null ? EMPTY_MARK : formatMoney(totalValue),
-    todayPercentText: todayDollar == null ? EMPTY_MARK : formatPercent(todayPercent),
-    todayDollarText: todayDollar == null ? EMPTY_MARK : formatMoney(todayDollar, { signed: true }),
-    lifePercentText: lifeDollar == null ? EMPTY_MARK : formatPercent(lifePercent),
-    lifeDollarText: lifeDollar == null ? EMPTY_MARK : formatMoney(lifeDollar, { signed: true }),
-    todaySign: todayDollar == null ? "flat" : signOf(todayDollar),
-    lifeSign: lifeDollar == null ? "flat" : signOf(lifeDollar),
+    ...signedFigures(todayDollar, todayPercent, previousValue, lifeDollar, lifePercent, costBasis),
   };
 }

@@ -1,4 +1,4 @@
-import { EMPTY_MARK, isCompleteHolding, presentHeader, presentPortfolio, sortRows } from "./calc.js";
+import { EMPTY_MARK, holdingLabel, isCashHolding, isCompleteHolding, presentHeader, presentPortfolio, sortRows } from "./calc.js";
 import {
   OFFLINE_MESSAGE,
   applyQuotes,
@@ -43,6 +43,7 @@ let lastFocus = null;
 let addReturnFocus = null;
 let settingsReturnFocus = null;
 let formMode = { kind: "add", id: null };
+let entryKind = "holding";
 let quoteNotice = { warning: "", offline: false };
 let updating = false;
 let viewFilter = "";
@@ -139,15 +140,45 @@ function showDialog(dialog) {
   }
 }
 
+const HOLDING_INTRO = "The ticker is 1 to 5 letters. A period or a hyphen is allowed. Leave a price blank and the table shows a dash.";
+const CASH_INTRO = "Enter the portfolio and the dollar amount. Cash is not a ticker.";
+
+function setEntry(kind) {
+  entryKind = kind === "cash" ? "cash" : "holding";
+  const cash = entryKind === "cash";
+  const editing = formMode.kind === "edit";
+  document.getElementById("field-amount").hidden = !cash;
+  for (const id of ["field-ticker", "field-shares", "field-cost", "field-last", "field-prev"]) {
+    document.getElementById(id).hidden = cash;
+  }
+  document.getElementById("add-kind").hidden = editing;
+  document.getElementById("kind-holding").setAttribute("aria-pressed", cash ? "false" : "true");
+  document.getElementById("kind-cash").setAttribute("aria-pressed", cash ? "true" : "false");
+  document.getElementById("add-title").textContent = editing
+    ? cash
+      ? "Edit cash"
+      : "Edit holding"
+    : cash
+      ? "Add cash"
+      : "Add a holding";
+  document.getElementById("add-intro").hidden = editing;
+  document.getElementById("add-intro").textContent = cash ? CASH_INTRO : HOLDING_INTRO;
+  document.getElementById("edit-intro").hidden = !editing;
+  document.getElementById("edit-intro").textContent = cash
+    ? "Change the portfolio or the amount, then save."
+    : "The ticker stays as saved. Change the other fields, then save.";
+  document.getElementById("ticker-lock-note").hidden = cash || !editing;
+  document.getElementById("add-ticker").readOnly = editing && !cash;
+  document.getElementById("add-ticker").setAttribute("aria-readonly", editing && !cash ? "true" : "false");
+  const removeLabel = cash ? "Delete cash" : "Delete holding";
+  document.getElementById("add-delete").textContent = removeLabel;
+  document.getElementById("delete-confirm-yes").textContent = removeLabel;
+}
+
 function setFormChrome(mode) {
   formMode = mode;
   const editing = mode.kind === "edit";
-  document.getElementById("add-title").textContent = editing ? "Edit holding" : "Add a holding";
-  document.getElementById("add-intro").hidden = editing;
-  document.getElementById("edit-intro").hidden = !editing;
-  document.getElementById("ticker-lock-note").hidden = !editing;
-  document.getElementById("add-ticker").readOnly = editing;
-  document.getElementById("add-ticker").setAttribute("aria-readonly", editing ? "true" : "false");
+  setEntry(mode.entry || "holding");
   document.getElementById("add-delete").hidden = !editing;
   document.getElementById("form-actions").hidden = false;
   document.getElementById("delete-confirm").hidden = true;
@@ -164,7 +195,7 @@ function openAdd(trigger) {
   }
   addForm.reset();
   hideFormError();
-  setFormChrome({ kind: "add", id: null });
+  setFormChrome({ kind: "add", id: null, entry: "holding" });
   document.getElementById("add-replaces").hidden = !state.isExample;
   fillPortfolioList();
   addReturnFocus = trigger || null;
@@ -187,18 +218,22 @@ function openEdit(holding, trigger) {
   }
   addForm.reset();
   hideFormError();
-  setFormChrome({ kind: "edit", id: holding.id });
+  setFormChrome({ kind: "edit", id: holding.id, entry: isCashHolding(holding) ? "cash" : "holding" });
   document.getElementById("add-replaces").hidden = true;
   fillPortfolioList();
-  addForm.elements.ticker.value = holding.ticker;
   addForm.elements.portfolio.value = holding.portfolio;
-  addForm.elements.shares.value = fieldNumber(holding.shares);
-  addForm.elements.costBasis.value = fieldNumber(holding.costBasis);
-  addForm.elements.lastPrice.value = fieldNumber(holding.lastPrice);
-  addForm.elements.previousClose.value = fieldNumber(holding.previousClose);
+  if (isCashHolding(holding)) {
+    addForm.elements.amount.value = fieldNumber(holding.amount);
+  } else {
+    addForm.elements.ticker.value = holding.ticker;
+    addForm.elements.shares.value = fieldNumber(holding.shares);
+    addForm.elements.costBasis.value = fieldNumber(holding.costBasis);
+    addForm.elements.lastPrice.value = fieldNumber(holding.lastPrice);
+    addForm.elements.previousClose.value = fieldNumber(holding.previousClose);
+  }
   addReturnFocus = trigger || null;
   showDialog(addDialog);
-  document.getElementById("add-portfolio").focus();
+  document.getElementById(isCashHolding(holding) ? "add-amount" : "add-portfolio").focus();
 }
 
 function restoreAddFocus() {
@@ -237,9 +272,10 @@ addForm.addEventListener("input", () => {
   if (!document.getElementById("add-error").hidden) hideFormError();
 });
 
-function focusHolding(ticker, portfolio) {
+function focusHolding(holding) {
+  const label = holdingLabel(holding);
   for (const button of tbody.querySelectorAll(".ticker-button")) {
-    if (button.dataset.ticker === ticker && button.dataset.portfolio === portfolio) {
+    if (button.textContent === label && button.dataset.portfolio === holding.portfolio) {
       button.closest("tr")?.scrollIntoView({ block: "nearest" });
       button.focus();
       return;
@@ -260,6 +296,13 @@ function persist(next, { keepQuoteNotice = false } = {}) {
 }
 
 function formValues() {
+  if (entryKind === "cash") {
+    return {
+      kind: "cash",
+      portfolio: addForm.elements.portfolio.value,
+      amount: addForm.elements.amount.value,
+    };
+  }
   return {
     ticker: addForm.elements.ticker.value,
     portfolio: addForm.elements.portfolio.value,
@@ -283,7 +326,21 @@ addForm.addEventListener("submit", (event) => {
   addReturnFocus = null;
   persist(result.state);
   closeAdd();
-  focusHolding(result.holding.ticker, result.holding.portfolio);
+  focusHolding(result.holding);
+});
+
+document.getElementById("kind-holding").addEventListener("click", () => {
+  if (formMode.kind === "edit") return;
+  setEntry("holding");
+  hideFormError();
+  document.getElementById("add-ticker").focus();
+});
+
+document.getElementById("kind-cash").addEventListener("click", () => {
+  if (formMode.kind === "edit") return;
+  setEntry("cash");
+  hideFormError();
+  document.getElementById("add-amount").focus();
 });
 
 document.querySelector("#add-delete").addEventListener("click", () => {
@@ -293,7 +350,7 @@ document.querySelector("#add-delete").addEventListener("click", () => {
     return;
   }
   document.getElementById("delete-confirm-text").textContent =
-    `Delete ${holding.ticker} in ${holding.portfolio}? This removes it from this device.`;
+    `Delete ${holdingLabel(holding)} in ${holding.portfolio}? This removes it from this device.`;
   document.getElementById("form-actions").hidden = true;
   document.getElementById("add-delete").hidden = true;
   document.getElementById("delete-confirm").hidden = false;
@@ -744,14 +801,15 @@ function renderTable(presented) {
     const toggle = document.createElement("button");
     toggle.type = "button";
     toggle.className = "ticker-button";
-    toggle.textContent = row.holding.ticker;
-    toggle.dataset.ticker = row.holding.ticker;
+    const label = holdingLabel(row.holding);
+    toggle.textContent = label;
+    toggle.dataset.ticker = isCashHolding(row.holding) ? "" : row.holding.ticker;
     toggle.dataset.portfolio = row.holding.portfolio;
     toggle.setAttribute("aria-expanded", "false");
     toggle.setAttribute("aria-controls", `edit-${index}`);
     toggle.setAttribute(
       "aria-label",
-      `${row.holding.ticker} in ${row.holding.portfolio}. Show the edit choice.`,
+      `${label} in ${row.holding.portfolio}. Show the edit choice.`,
     );
     equity.append(toggle);
 
@@ -777,11 +835,11 @@ function renderTable(presented) {
     editButton.className = "button button-primary edit-choice";
     editButton.textContent = "Edit";
     editButton.dataset.id = row.holding.id || "";
-    editButton.dataset.ticker = row.holding.ticker;
+    editButton.dataset.ticker = isCashHolding(row.holding) ? "" : row.holding.ticker;
     editButton.dataset.portfolio = row.holding.portfolio;
     editButton.setAttribute(
       "aria-label",
-      `Edit ${row.holding.ticker} in ${row.holding.portfolio}`,
+      `Edit ${holdingLabel(row.holding)} in ${row.holding.portfolio}`,
     );
     editCell.append(editButton);
     editRow.append(editCell);
