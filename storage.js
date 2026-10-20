@@ -42,6 +42,11 @@ export function isValidTicker(ticker) {
   return ticker.length >= 1 && ticker.length <= 5 && /^[A-Z](?:[A-Z.\-]*[A-Z])?$/.test(ticker);
 }
 
+// A row whose portfolio is "Total" is a combined equity line. It is info only.
+export function isInfoTotal(holding) {
+  return normalizePortfolio(holding?.portfolio).toLowerCase() === "total";
+}
+
 export function holdingsForView(holdings, filterName) {
   const list = holdings || [];
   const wanted = normalizePortfolio(filterName).toLowerCase();
@@ -51,6 +56,15 @@ export function holdingsForView(holdings, filterName) {
   return list.filter((row) => normalizePortfolio(row?.portfolio).toLowerCase() === match.toLowerCase());
 }
 
+export function portfolioSubtotals(holdings) {
+  const counted = (holdings || []).filter((row) => !isInfoTotal(row));
+  return portfolioNames(counted).map((name) => {
+    const wanted = name.toLowerCase();
+    const rows = counted.filter((row) => normalizePortfolio(row?.portfolio).toLowerCase() === wanted);
+    return { ...presentPortfolio(rows), name };
+  });
+}
+
 export function portfolioNames(holdings) {
   const seen = new Set();
   const names = [];
@@ -58,7 +72,7 @@ export function portfolioNames(holdings) {
     if (!holding || typeof holding.portfolio !== "string") continue;
     const name = normalizePortfolio(holding.portfolio);
     const key = name.toLowerCase();
-    if (!name || seen.has(key)) continue;
+    if (!name || key === "total" || seen.has(key)) continue;
     seen.add(key);
     names.push(name);
   }

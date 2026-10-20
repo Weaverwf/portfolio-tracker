@@ -502,6 +502,11 @@ tbody tr.holding {
   cursor: pointer;
 }
 
+tbody tr.info-total :is(td, th) {
+  background: var(--info-bg);
+  color: var(--info-ink);
+}
+
 .ticker-button {
   appearance: none;
   display: inline-flex;

@@ -1,4 +1,4 @@
-import { EMPTY_MARK, isCompleteHolding, presentPortfolio, sortRows } from "./calc.js";
+import { EMPTY_MARK, isCompleteHolding, presentHeader, presentPortfolio, sortRows } from "./calc.js";
 import {
   OFFLINE_MESSAGE,
   applyQuotes,
@@ -14,7 +14,9 @@ import {
   exportFilename,
   findDuplicate,
   holdingsForView,
+  isInfoTotal,
   loadApiKey,
+  portfolioSubtotals,
   loadFilter,
   loadState,
   normalizePortfolio,
@@ -696,21 +698,19 @@ function metricLine(label, percentText, dollarText) {
   return `${label} ${percentText} ${dollarText}`;
 }
 
-function renderSubtotals(holdings, active) {
+function renderSubtotals(subtotals, active) {
   const section = document.getElementById("subtotals");
   section.replaceChildren();
-  const names = portfolioNames(holdings);
-  if (active || names.length === 0) {
+  if (active || !subtotals || subtotals.length === 0) {
     section.hidden = true;
     return;
   }
   section.hidden = false;
-  for (const name of names) {
-    const presented = presentPortfolio(holdingsForView(holdings, name));
+  for (const presented of subtotals) {
     const line = document.createElement("article");
     line.className = "subtotal-line";
     const title = document.createElement("h3");
-    title.textContent = name;
+    title.textContent = presented.name;
     const value = cell(
       "p",
       presented.totalValue == null ? "flat" : "",
@@ -737,6 +737,7 @@ function renderTable(presented) {
   presented.rows.forEach((row, index) => {
     const holdingRow = document.createElement("tr");
     holdingRow.className = index % 2 === 1 ? "holding band" : "holding";
+    if (isInfoTotal(row.holding)) holdingRow.classList.add("info-total");
 
     const equity = cell("th", "equity");
     equity.scope = "row";
@@ -891,10 +892,13 @@ function render(next) {
   }
 
   const visible = holdingsForView(good, active);
+  // One subtotal per portfolio, each limited to that portfolio's holdings. The header adds those subtotals.
+  const subtotals = portfolioSubtotals(visible);
+  const header = presentHeader(subtotals);
   const presented = presentPortfolio(visible);
   presented.rows = sortRows(presented.rows, sortState.key, sortState.dir);
-  renderSummary(presented);
-  renderSubtotals(good, active);
+  renderSummary(header);
+  renderSubtotals(subtotals, active);
   renderTable(presented);
   const heading = active || (next.isExample ? "Example holdings" : "Holdings");
   document.getElementById("table-heading").textContent = heading;

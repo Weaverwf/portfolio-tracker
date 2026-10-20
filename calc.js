@@ -201,6 +201,41 @@ export function sortRows(rows, key, direction) {
   });
 }
 
+// The header is the sum of these portfolio subtotals. It does not walk rendered rows.
+export function presentHeader(subtotals) {
+  const parts = Array.isArray(subtotals) ? subtotals.filter((part) => part && typeof part === "object") : [];
+  const allValued =
+    parts.length > 0 && parts.every((part) => part.totalValue != null && part.lifeDollar != null && part.costBasis != null);
+  const allMoved =
+    parts.length > 0 && parts.every((part) => part.todayDollar != null && part.previousValue != null);
+
+  const totalValue = allValued ? sumCents(parts.map((part) => part.totalValue)) : null;
+  const lifeDollar = allValued ? sumCents(parts.map((part) => part.lifeDollar)) : null;
+  const costBasis = allValued ? sumCents(parts.map((part) => part.costBasis)) : null;
+  const lifePercent = !allValued || costBasis === 0 ? null : lifeDollar / costBasis;
+
+  const todayDollar = allMoved ? sumCents(parts.map((part) => part.todayDollar)) : null;
+  const previousValue = allMoved ? sumCents(parts.map((part) => part.previousValue)) : null;
+  const todayPercent = !allMoved || previousValue === 0 ? null : todayDollar / previousValue;
+
+  return {
+    totalValue,
+    todayDollar,
+    lifeDollar,
+    costBasis,
+    previousValue,
+    todayPercent,
+    lifePercent,
+    totalValueText: totalValue == null ? EMPTY_MARK : formatMoney(totalValue),
+    todayPercentText: todayDollar == null ? EMPTY_MARK : formatPercent(todayPercent),
+    todayDollarText: todayDollar == null ? EMPTY_MARK : formatMoney(todayDollar, { signed: true }),
+    lifePercentText: lifeDollar == null ? EMPTY_MARK : formatPercent(lifePercent),
+    lifeDollarText: lifeDollar == null ? EMPTY_MARK : formatMoney(lifeDollar, { signed: true }),
+    todaySign: todayDollar == null ? "flat" : signOf(todayDollar),
+    lifeSign: lifeDollar == null ? "flat" : signOf(lifeDollar),
+  };
+}
+
 export function presentPortfolio(holdings) {
   const rows = holdings.map((holding) => ({
     holding,

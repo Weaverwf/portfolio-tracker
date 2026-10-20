@@ -1,6 +1,6 @@
 // Bump CACHE when shipped files change so an installed copy drops the old files.
 // Requests for this app's own files are cached. Nothing else is fetched.
-const CACHE = "portfolio-v7";
+const CACHE = "portfolio-v8";
 
 const SHELL = [
   "./",

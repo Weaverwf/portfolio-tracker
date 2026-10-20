@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { presentPortfolio, sortRows } from "../calc.js";
+import { readFileSync } from "node:fs";
+import { presentHeader, presentPortfolio, sortRows } from "../calc.js";
+import { applyQuotes } from "../quotes.js";
 import { SAMPLE_HOLDINGS } from "../sample.js";
 import {
   FILTER_KEY,
@@ -9,12 +11,14 @@ import {
   STORAGE_KEY,
   exportFilename,
   holdingsForView,
+  isInfoTotal,
   loadFilter,
   loadState,
   parseImport,
   parseStored,
   perShareFromTotal,
   portfolioNames,
+  portfolioSubtotals,
   replaceHoldings,
   saveFilter,
   toExportRecord,
@@ -159,6 +163,95 @@ test("a migrated one-row portfolio is in the top total once", () => {
   assert.equal(top.lifeDollar, sumCents(top.rows.map((row) => row.lifeDollar)));
   assert.equal(ira + roth + taxable, top.totalValue);
   assert.notEqual(top.totalValue, sumCents([rowTotal, ira, roth, taxable]));
+});
+
+test("the header is the sum of portfolio subtotals, and a combined equity row is info only", () => {
+  const mix = [
+    { id: "aapl-ira", ticker: "AAPL", portfolio: "IRA", shares: 10, costBasis: 50, lastPrice: 60, previousClose: 55 },
+    { id: "aapl-roth", ticker: "AAPL", portfolio: "Roth IRA", shares: 4, costBasis: 25, lastPrice: 60, previousClose: 55 },
+    { id: "aapl-total", ticker: "AAPL", portfolio: "Total", shares: 14, costBasis: 40, lastPrice: 60, previousClose: 55 },
+    { id: "eee-tax", ticker: "EEE", portfolio: "Taxable", shares: 2, costBasis: 10, lastPrice: 15, previousClose: 12 },
+  ];
+  assert.equal(isInfoTotal(mix[2]), true);
+  assert.equal(isInfoTotal(mix[3]), false);
+  assert.deepEqual(portfolioNames(mix), ["IRA", "Roth IRA", "Taxable"]);
+
+  const subtotals = portfolioSubtotals(mix);
+  assert.deepEqual(
+    subtotals.map((part) => part.name),
+    ["IRA", "Roth IRA", "Taxable"],
+  );
+  const ira = subtotals[0];
+  const roth = subtotals[1];
+  const taxable = subtotals[2];
+  assert.deepEqual(
+    ira.rows.map((row) => row.holding.ticker),
+    ["AAPL"],
+  );
+  assert.equal(ira.rows.length, 1);
+  assert.equal(ira.totalValue, 600);
+  assert.equal(ira.totalValue, sumCents(ira.rows.map((row) => row.totalValue)));
+  assert.equal(roth.rows.length, 1);
+  assert.equal(roth.totalValue, 240);
+  assert.equal(roth.totalValue, sumCents(roth.rows.map((row) => row.totalValue)));
+  assert.equal(taxable.rows.length, 1);
+  assert.equal(taxable.rows[0].holding.ticker, "EEE");
+  assert.equal(taxable.totalValue, 30);
+  assert.equal(taxable.totalValue, taxable.rows[0].totalValue);
+
+  for (const part of subtotals) {
+    assert.notEqual(part.name.toLowerCase(), "total");
+    assert.ok(part.rows.every((row) => row.holding.portfolio.toLowerCase() === part.name.toLowerCase()));
+    assert.ok(part.rows.every((row) => !isInfoTotal(row.holding)));
+    assert.equal(part.totalValue, sumCents(part.rows.map((row) => row.totalValue)));
+  }
+
+  const header = presentHeader(subtotals);
+  const holdingSum = sumCents(subtotals.flatMap((part) => part.rows.map((row) => row.totalValue)));
+  assert.equal(header.totalValue, sumCents(subtotals.map((part) => part.totalValue)));
+  assert.equal(header.totalValue, holdingSum);
+  assert.equal(header.totalValue, 870);
+  assert.equal(header.todayDollar, sumCents(subtotals.map((part) => part.todayDollar)));
+  assert.equal(header.lifeDollar, sumCents(subtotals.map((part) => part.lifeDollar)));
+  assert.equal(header.todayDollar, 76);
+  assert.equal(header.lifeDollar, 250);
+  assert.notEqual(header.totalValue, 870 + 840);
+
+  const polluted = presentHeader([
+    { ...ira, rows: ira.rows.concat([{ totalValue: 840, holding: { ticker: "AAPL", portfolio: "Total" } }]) },
+    roth,
+    taxable,
+  ]);
+  assert.equal(polluted.totalValue, 870);
+
+  const iraOnly = portfolioSubtotals(holdingsForView(mix, "IRA"));
+  assert.equal(iraOnly.length, 1);
+  assert.equal(iraOnly[0].rows.length, 1);
+  assert.equal(presentHeader(iraOnly).totalValue, 600);
+
+  const sorted = sortRows(presentPortfolio(mix).rows, "total", "desc");
+  assert.equal(sorted.length, 4);
+  assert.equal(sorted[0].holding.portfolio, "Total");
+  assert.equal(presentHeader(portfolioSubtotals(mix)).totalValue, 870);
+
+  const updated = applyQuotes(mix, {
+    AAPL: { ok: true, lastPrice: 70, previousClose: 60 },
+  });
+  const after = portfolioSubtotals(updated.holdings);
+  const afterHeader = presentHeader(after);
+  assert.equal(after.find((part) => part.name === "IRA").totalValue, 700);
+  assert.equal(after.find((part) => part.name === "Roth IRA").totalValue, 280);
+  assert.equal(after.find((part) => part.name === "Taxable").totalValue, 30);
+  assert.equal(afterHeader.totalValue, 1010);
+  assert.equal(updated.holdings.find((row) => row.portfolio === "Total").lastPrice, 70);
+  assert.notEqual(afterHeader.totalValue, 1010 + 14 * 70);
+
+  const app = readFileSync(new URL("../app.js", import.meta.url), "utf8");
+  assert.equal((app.match(/^\s*renderSummary\(/gm) || []).length, 1);
+  assert.match(app, /const subtotals = portfolioSubtotals\(visible\)/);
+  assert.match(app, /const header = presentHeader\(subtotals\)/);
+  assert.match(app, /renderSummary\(header\)/);
+  assert.match(app, /presented\.rows = sortRows\(presented\.rows/);
 });
 
 test("column sort orders ticker, total, today, and life, and keeps blanks last", () => {
