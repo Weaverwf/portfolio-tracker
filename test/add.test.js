@@ -280,6 +280,7 @@ test("the page offers clear example data and a device-only quote update", () => 
   const html = readFileSync(new URL("../index.html", import.meta.url), "utf8");
   const app = readFileSync(new URL("../app.js", import.meta.url), "utf8");
   const sw = readFileSync(new URL("../sw.js", import.meta.url), "utf8");
+  const css = readFileSync(new URL("../styles.css", import.meta.url), "utf8");
   assert.match(html, /Clear example data/);
   assert.match(html, /id="add-form"/);
   assert.match(html, /name="lastPrice"/);
@@ -295,7 +296,10 @@ test("the page offers clear example data and a device-only quote update", () => 
   assert.doesNotMatch(app, /Live prices are not available/);
   assert.doesNotMatch(app, /Adding a holding by ticker is not available/);
   assert.doesNotMatch(app, /is not available in this version/);
-  assert.match(sw, /const CACHE = "portfolio-v11"/);
+  assert.match(sw, /const CACHE = "portfolio-v12"/);
+  assert.match(css, /@media \(min-width: 768px\) and \(min-height: 700px\)/);
+  assert.match(css, /@media \(max-width: 767px\), \(max-height: 500px\)/);
+  assert.match(css, /position:\s*sticky/);
   assert.match(sw, /cache:\s*"no-store"/);
   assert.match(sw, /\.\/quotes\.js/);
   const fetchAt = sw.indexOf('addEventListener("fetch"');

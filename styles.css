@@ -34,7 +34,7 @@ html {
   font-size: 18px;
 }
 
-@media (min-width: 768px) {
+@media (min-width: 768px) and (min-height: 700px) {
   html {
     font-size: 20px;
   }
@@ -884,6 +884,38 @@ dialog.fallback[open] {
 @media (max-width: 767px) {
   .banner .button {
     width: 100%;
+  }
+}
+
+@media (max-width: 767px), (max-height: 500px) {
+  table {
+    font-size: 0.92rem;
+  }
+
+  th,
+  td {
+    padding: 8px 10px;
+  }
+
+  thead th .sub,
+  .sort-button .sub {
+    font-size: 0.78rem;
+  }
+
+  .sort-button {
+    min-height: 44px;
+    padding: 8px 10px;
+  }
+
+  .ticker-button {
+    min-height: 44px;
+    font-size: 1rem;
+  }
+
+  tbody th.equity,
+  thead th.equity,
+  tr.edit-slot td.equity {
+    min-width: 4.75rem;
   }
 }
 
