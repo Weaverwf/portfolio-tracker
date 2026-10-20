@@ -58,6 +58,78 @@ test("All keeps every portfolio and a chip limits the rows and the total", () =>
   assert.equal(grand.totalValue, 19520 + 5275.5 + 6240);
 });
 
+function sumCents(values) {
+  return values.reduce((sum, value) => sum + Math.round(value * 100), 0) / 100;
+}
+
+test("the top total sums every visible holding, including a one-row portfolio", () => {
+  const mix = [
+    {
+      id: "ira-aaa",
+      ticker: "AAA",
+      portfolio: "IRA",
+      shares: 10,
+      costBasis: 50,
+      lastPrice: 60,
+      previousClose: 55,
+    },
+    {
+      id: "ira-bbb",
+      ticker: "BBB",
+      portfolio: "IRA",
+      shares: 4,
+      costBasis: 25,
+      lastPrice: 30,
+      previousClose: 28,
+    },
+    {
+      id: "solo-ccc",
+      ticker: "CCC",
+      portfolio: "Solo",
+      shares: 2,
+      costBasis: 10,
+      lastPrice: 15,
+      previousClose: 12,
+    },
+  ];
+  assert.deepEqual(portfolioNames(mix), ["IRA", "Solo"]);
+  assert.equal(holdingsForView(mix, "IRA").length, 2);
+  assert.equal(holdingsForView(mix, "Solo").length, 1);
+
+  const top = presentPortfolio(holdingsForView(mix, ""));
+  assert.equal(top.rows.length, 3);
+  assert.equal(top.totalValue, sumCents(top.rows.map((row) => row.totalValue)));
+  assert.equal(top.todayDollar, sumCents(top.rows.map((row) => row.todayDollar)));
+  assert.equal(top.lifeDollar, sumCents(top.rows.map((row) => row.lifeDollar)));
+  assert.equal(top.totalValue, 750);
+  assert.equal(top.todayDollar, 64);
+  assert.equal(top.lifeDollar, 130);
+
+  const single = top.rows.find((row) => row.holding.portfolio === "Solo");
+  assert.equal(single.holding.ticker, "CCC");
+  assert.equal(single.totalValue, 30);
+  assert.equal(top.totalValue, 720 + single.totalValue);
+
+  const iraSubtotal = presentPortfolio(holdingsForView(mix, "IRA")).totalValue;
+  const soloSubtotal = presentPortfolio(holdingsForView(mix, "Solo")).totalValue;
+  assert.equal(iraSubtotal, 720);
+  assert.equal(soloSubtotal, single.totalValue);
+  assert.equal(iraSubtotal + soloSubtotal, top.totalValue);
+  assert.notEqual(top.totalValue, sumCents([top.totalValue, iraSubtotal, soloSubtotal]));
+
+  const onlySolo = presentPortfolio(holdingsForView(mix, "Solo"));
+  assert.equal(onlySolo.rows.length, 1);
+  assert.equal(onlySolo.totalValue, onlySolo.rows[0].totalValue);
+  assert.equal(onlySolo.todayDollar, onlySolo.rows[0].todayDollar);
+  assert.equal(onlySolo.lifeDollar, onlySolo.rows[0].lifeDollar);
+
+  const onlyIra = presentPortfolio(holdingsForView(mix, "IRA"));
+  assert.equal(onlyIra.rows.length, 2);
+  assert.equal(onlyIra.totalValue, sumCents(onlyIra.rows.map((row) => row.totalValue)));
+  assert.equal(onlyIra.totalValue, 720);
+  assert.equal(onlyIra.totalValue, top.totalValue - single.totalValue);
+});
+
 test("column sort orders ticker, total, today, and life, and keeps blanks last", () => {
   const rows = presented();
   assert.deepEqual(
